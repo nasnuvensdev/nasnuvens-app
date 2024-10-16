@@ -7,6 +7,7 @@ from io import BytesIO
 #----------------------------------
 
 title = st.title("Withholding App")
+descritivo = st.caption("Desconta 30% das receitas EUA")
 #----------------------------------
 # Upload do arquivo
 #----------------------------------

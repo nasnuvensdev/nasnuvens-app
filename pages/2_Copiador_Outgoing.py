@@ -9,12 +9,13 @@ import pandas as pd
 
 # Título da aplicação
 st.title("Copiador de Arquivos Mensais para Outgoing")
+descritivo = st.caption("Copia todos os relatórios do mês para fins contábeis")
 
 #----------------------------------
 # Variáveis configuráveis - Entrada pelo usuário
 #----------------------------------
 
-caminho_excel = st.text_input("Caminho para o arquivo Excel:", r'Z:\FINANCEIRO\03. ROYALTY\02. REVENUE RECONCILIATION\2024 Revenue Reconciliation.xlsx')
+caminho_excel = st.text_input("Caminho para a planilha RR:", r'Z:\FINANCEIRO\03. ROYALTY\02. REVENUE RECONCILIATION\2024 Revenue Reconciliation.xlsx')
 coluna_caminho = 'Stmt Path'
 coluna_catalogo = 'Catalog'
 coluna_fonte_renda = 'Income Source'
@@ -23,8 +24,8 @@ pasta_saida = st.text_input("Caminho para a pasta de saída:", r'Z:\CONTROLE FIN
 mes = st.number_input("Mês de Pagamento:", min_value=1, max_value=12, value=1, step=1)
 
 # Substituir raiz da rede
-raiz_antiga = st.text_input("Raiz antiga:", r'N:')
-raiz_nova = st.text_input("Nova raiz:", r'Z:')
+raiz_antiga = st.text_input("Raiz origem:", r'N:')
+raiz_nova = st.text_input("Raiz saída:", r'Z:')
 
 #----------------------------------
 # Função para copiar arquivos
