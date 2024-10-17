@@ -3,10 +3,10 @@ import pandas as pd
 from io import BytesIO
 
 #----------------------------------
-# Withholding App
+# Withholding Calculator
 #----------------------------------
 
-title = st.title("Withholding App")
+title = st.title("Withholding Calculator")
 descritivo = st.caption("Desconta 30% das receitas EUA")
 #----------------------------------
 # Upload do arquivo
