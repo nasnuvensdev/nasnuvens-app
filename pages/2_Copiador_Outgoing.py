@@ -20,7 +20,7 @@ coluna_caminho = 'Stmt Path'
 coluna_catalogo = 'Catalog'
 coluna_fonte_renda = 'Income Source'
 coluna_mes_pgto = 'Mês Pgto'
-pasta_saida = st.text_input("Caminho para a pasta de saída:", r'Z:\CONTROLE FINANCEIRO\05 OUTGOING\2024\09. Set 24\Receita')
+pasta_saida = st.text_input("Caminho para a pasta de saída:")
 mes = st.number_input("Mês de Pagamento:", min_value=1, max_value=12, value=1, step=1)
 
 # Substituir raiz da rede
@@ -56,16 +56,20 @@ def copiar_arquivos(row):
 # Botão para iniciar a cópia dos arquivos
 #----------------------------------
 
-if st.button("Iniciar Cópia"):
-    # Ler o arquivo Excel
-    try:
-        df = pd.read_excel(caminho_excel, sheet_name='ROYALTY')
-        df_mes = df[df[coluna_mes_pgto] == mes].dropna(subset=[coluna_caminho])
+col1, col2, col3 = st.columns([1.6,1,1.6])
 
-        # Iterar sobre o DataFrame e copiar os arquivos
-        df_mes.apply(copiar_arquivos, axis=1)
-        st.success("Processo de cópia concluído!")
-    except FileNotFoundError:
-        st.error("O arquivo Excel especificado não foi encontrado.")
-    except Exception as e:
-        st.error(f"Erro ao processar o arquivo Excel: {e}")
+with col2:
+
+    if st.button("Iniciar Cópia", type='primary'):
+        # Ler o arquivo Excel
+        try:
+            df = pd.read_excel(caminho_excel, sheet_name='ROYALTY')
+            df_mes = df[df[coluna_mes_pgto] == mes].dropna(subset=[coluna_caminho])
+
+            # Iterar sobre o DataFrame e copiar os arquivos
+            df_mes.apply(copiar_arquivos, axis=1)
+            st.success("Processo de cópia concluído!")
+        except FileNotFoundError:
+            st.error("O arquivo Excel especificado não foi encontrado.")
+        except Exception as e:
+            st.error(f"Erro ao processar o arquivo Excel: {e}")
