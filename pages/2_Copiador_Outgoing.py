@@ -9,7 +9,7 @@ import pandas as pd
 
 # Título da aplicação
 st.title("Copiador de Arquivos Mensais para Outgoing")
-descritivo = st.caption("Copia todos os relatórios do mês para fins contábeis")
+descritivo = st.caption("Copia todos os relatórios do mês para fins contábeis.")
 
 #----------------------------------
 # Variáveis configuráveis - Entrada pelo usuário

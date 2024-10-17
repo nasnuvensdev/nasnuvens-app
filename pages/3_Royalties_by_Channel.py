@@ -6,7 +6,7 @@ import os
 # Royalties by Channel App
 #----------------------------------
 title = st.title("Royalties by Channel")
-descritivo = st.caption("Cria a planilha o modelo Royalties by Channel para uso do financeiro")
+descritivo = st.caption("Cria a planilha Royalties by Channel para uso do financeiro.")
 
 # Função para limpar as aspas que podem ser incluídas ao copiar o caminho
 def clean_path(path):
