@@ -15,7 +15,9 @@ def adjust_file_name(file_name):
 st.title("Withholding Calculator")
 st.caption("Desconta 30% das receitas dos EUA.")
 
+#----------------------------------
 # Seleção do relatório
+#----------------------------------
 report_option = st.selectbox(
     'Selecione o relatório',
     (
@@ -24,16 +26,21 @@ report_option = st.selectbox(
         'Onerpm'
     )
 )
-
+#----------------------------------
 # Upload do arquivo
+#----------------------------------
 uploaded_file = st.file_uploader("Faça o upload do arquivo Excel")
 
 if uploaded_file is not None:
 
+    #----------------------------------
     # Nome do arquivo de upload
+    #----------------------------------
     original_file_name = uploaded_file.name.split(".")[0]
 
+    #----------------------------------
     # Leitura do arquivo com base na opção selecionada
+    #----------------------------------
     if report_option == 'The Orchard (Europa)':
         df = pd.read_excel(uploaded_file)
 
@@ -45,15 +52,92 @@ if uploaded_file is not None:
         xls = pd.ExcelFile(uploaded_file)
         required_sheets = ['Masters', 'Youtube Channels', 'Shares In & Out']
 
+    #----------------------------------
     # Inicializa dicionários para armazenar os totais por moeda e share-out
+    #----------------------------------
     total_by_currency = {}
     share_out_by_currency = {}
 
+    #----------------------------------
     # Processamento dos dados
+    #----------------------------------
     if st.button('Processar desconto', type='primary'):
 
+        #----------------------------------
+        # Processamento THE ORCHARD
+        #----------------------------------
+        if report_option == 'The Orchard (Europa)':
+            net_total = df['Label Share Net Receipts'].sum()
+
+            # Aplica a fórmula de withholding diretamente na coluna original
+            df['Label Share Net Receipts'] = df.apply(
+                lambda row: row['Label Share Net Receipts'] - ((row['Label Share Net Receipts'] * 30) / 100)
+                if row['Territory'] == 'USA' else row['Label Share Net Receipts'],
+                axis=1
+            )
+
+            withholding_total = df['Label Share Net Receipts'].sum()
+            total_withheld = net_total - withholding_total
+
+            # Exibe os resultados
+            st.write(f'O valor Net é **USD {net_total:,.2f}**')
+            st.write(f'O valor Net menos withholding é **USD {withholding_total:,.2f}**')
+            st.write(f'O total de withholding aplicado é **USD {total_withheld:,.2f}**')
+
+            # Preparar o arquivo para download
+            output = BytesIO()
+            writer = pd.ExcelWriter(output, engine='xlsxwriter')
+            df.to_excel(writer, index=False)
+            writer.close()
+
+            st.download_button(
+                label="Baixar arquivo processado",
+                data=output.getvalue(),
+                file_name=adjust_file_name(original_file_name),
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+        #----------------------------------
+        # Processamento INGROOVES
+        #----------------------------------
+        elif report_option == 'Ingrooves':
+
+            # Filtra a linha de total para não somar em duplicidade
+            df = df[~df['Sales Classification'].str.contains("Total", case=False, na=False)]
+
+            net_total = df['Net Dollars after Fees'].sum()
+
+            # Aplica a fórmula diretamente na coluna original
+            df['Net Dollars after Fees'] = df.apply(
+                lambda row: row['Net Dollars after Fees'] - ((row['Net Dollars after Fees'] * 30) / 100)
+                if row['Territory'] == 'United States' else row['Net Dollars after Fees'],
+                axis=1
+            )
+
+            withholding_total = df['Net Dollars after Fees'].sum()
+            total_withheld = net_total - withholding_total
+
+            # Exibe os resultados
+            st.write(f'O valor Net é **USD {net_total:,.2f}**')
+            st.write(f'O valor Net menos withholding é **USD {withholding_total:,.2f}**')
+            st.write(f'O total de withholding aplicado é **USD {total_withheld:,.2f}**')
+
+            # Preparar o arquivo para download
+            output = BytesIO()
+            writer = pd.ExcelWriter(output, engine='xlsxwriter')
+            df.to_excel(writer, sheet_name=sheet_name, index=False)
+            writer.close()
+
+            st.download_button(
+                label="Baixar arquivo processado",
+                data=output.getvalue(),
+                file_name=adjust_file_name(original_file_name),
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+        #----------------------------------
         # Processamento ONERPM com separação por moeda
-        if report_option == 'Onerpm':
+        #----------------------------------
+        elif report_option == 'Onerpm':
             for sheet in required_sheets:
                 df_sheet = pd.read_excel(xls, sheet_name=sheet)
 
@@ -64,6 +148,7 @@ if uploaded_file is not None:
                 for currency in currencies:
                     df_sheet_currency = df_sheet[df_sheet['Currency'] == currency]
 
+                    #----------------------------------
                     # Lógica para planilhas "Masters" e "Youtube Channel"
                     if sheet == 'Masters' or sheet == 'Youtube Channels':
 
@@ -90,6 +175,7 @@ if uploaded_file is not None:
                         st.write(f'O valor Net menos withholding é **{currency} {withholding_total:,.2f}**')
                         st.write(f'O total de withholding aplicado é **{currency} {total_withheld:,.2f}**')
 
+                    #----------------------------------
                     # Lógica para planilhas "Shares In & Out"
                     elif sheet == 'Shares In & Out':
                         df_sheet_in = df_sheet_currency[df_sheet_currency['Share Type'] == 'In']
