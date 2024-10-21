@@ -1,4 +1,4 @@
-#Commit e push no Github#
+#Commit e push to Github#
 
 git add .
 git commit -m "Adicionando arquivos do projeto Nas Nuvens App"
@@ -7,3 +7,5 @@ git push origin main
 # Cria "requirements.txt" automaticamente
 pip freeze > requirements.txt
 
+# Cria .exe
+pyinstaller --onefile Home.py

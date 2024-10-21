@@ -8,12 +8,18 @@ from io import BytesIO
 
 title = st.title("Withholding Calculator")
 descritivo = st.caption("Desconta 30% das receitas EUA.")
+
+#----------------------------------
+# Seleção do relatório
+#----------------------------------
+
+report_option = st.selectbox('Selecione o relatório', ('Relatório Ingrooves', 'Relatório The Orchard'))
+
 #----------------------------------
 # Upload do arquivo
 #----------------------------------
 
 uploaded_file = st.file_uploader("Upload file")
-sheet_name = 'Digital Sales Details'
 
 #----------------------------------
 # Inicializa as variáveis em session_state para manter os valores após o download
@@ -39,6 +45,15 @@ if 'total_geral_values' not in st.session_state:
 #----------------------------------
 
 if uploaded_file is not None:
+
+    # Definir sheet_name e outras configurações com base no relatório selecionado
+    if report_option == 'Relatório Ingrooves':
+        sheet_name = 'Digital Sales Details'
+        # Outros ajustes específicos para Ingrooves, se houver
+    elif report_option == 'Relatório The Orchard':
+        sheet_name = 'Digital Sales Details'  # Atualize se o nome da planilha for diferente
+        # Aguarda as diferenças específicas para The Orchard
+
     df = pd.read_excel(uploaded_file, sheet_name)
 
     #----------------------------------
@@ -92,7 +107,6 @@ if uploaded_file is not None:
         #----------------------------------
         st.session_state.show_summary_button = True
 
-
 #----------------------------------
 # Verifica se há dados processados para download e mantém os valores na tela
 #----------------------------------
@@ -107,14 +121,14 @@ if st.session_state.processed_data:
     st.write(f'O total de withholding aplicado é **USD {st.session_state.total_withheld:,.2f}**')
 
     #----------------------------------
-    # Botão para download do arquivo processado
+    # Botão para download do arquivo processado (retiradol, por hora. Faremos o download em outro código)
     #----------------------------------
-    st.download_button(
-        label="Baixar arquivo processado",
-        data=st.session_state.processed_data,
-        file_name="Arquivo_Processado.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+    # st.download_button(
+    #     label="Baixar arquivo processado",
+    #     data=st.session_state.processed_data,
+    #     file_name="Arquivo_Processado.xlsx",
+    #     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    # )
     
     st.divider()
     
@@ -140,6 +154,7 @@ if st.session_state.processed_data:
             #----------------------------------
             # Função para agrupar valores por artistas
             #----------------------------------
+
             def group_artists(df, target_groups, marcelo_menezes_keywords, fx_rate):
 
                 #----------------------------------
