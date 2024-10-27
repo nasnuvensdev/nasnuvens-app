@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from io import BytesIO
+import zipfile
 
 #----------------------------------
 # Função para ajustar nomes dos arquivos, mantendo o nome original e adicionando o sufixo
@@ -22,8 +23,35 @@ st.caption("Desconta 30% das receitas dos EUA.")
 #----------------------------------
 # Inicializa variáveis de estado da sessão
 #----------------------------------
+
+# The Orchard
+#-------------
 if 'uploaded_file_name' not in st.session_state:
     st.session_state['uploaded_file_name'] = None
+if 'orchard_net_total' not in st.session_state:
+    st.session_state['orchard_net_total'] = None
+if 'orchard_withholding_total' not in st.session_state:
+    st.session_state['orchard_withholding_total'] = None
+if 'orchard_total_withheld' not in st.session_state:
+    st.session_state['orchard_total_withheld'] = None
+if 'orchard_processed_data' not in st.session_state:
+    st.session_state['orchard_processed_data'] = None
+
+# Ingrooves
+# -------------
+
+if 'ingrooves_net_total' not in st.session_state:
+    st.session_state['ingrooves_net_total'] = None
+if 'ingrooves_withholding_total' not in st.session_state:
+    st.session_state['ingrooves_withholding_total'] = None
+if 'ingrooves_total_withheld' not in st.session_state:
+    st.session_state['ingrooves_total_withheld'] = None
+if 'ingrooves_processed_data' not in st.session_state:
+    st.session_state['ingrooves_processed_data'] = None
+
+# Onerpm
+# -------------
+
 if 'onerpm_results' not in st.session_state:
     st.session_state['onerpm_results'] = []
 if 'total_by_currency' not in st.session_state:
@@ -65,7 +93,22 @@ if uploaded_file is not None:
     # Verifica se um novo arquivo foi carregado e reseta o estado da sessão
     #----------------------------------
     if uploaded_file.name != st.session_state['uploaded_file_name']:
+        # Salva o novo nome do arquivo
         st.session_state['uploaded_file_name'] = uploaded_file.name
+        
+        # Reset The Orchard
+        st.session_state['orchard_net_total'] = None
+        st.session_state['orchard_withholding_total'] = None
+        st.session_state['orchard_total_withheld'] = None
+        st.session_state['orchard_processed_data'] = None
+        
+        # Reset Ingrooves
+        st.session_state['ingrooves_net_total'] = None
+        st.session_state['ingrooves_withholding_total'] = None
+        st.session_state['ingrooves_total_withheld'] = None
+        st.session_state['ingrooves_processed_data'] = None
+        
+        # Reset ONErpm
         st.session_state['onerpm_results'] = []
         st.session_state['total_by_currency'] = {}
         st.session_state['share_out_by_currency'] = {}
@@ -101,17 +144,17 @@ if uploaded_file is not None:
         brl_tax = st.number_input('Insira o valor fixo da taxa em BRL', min_value=0.0, value=0.75, step=0.01)
 
     #----------------------------------
-    # Processamento dos dados
+    # Processamento THE ORCHARD
     #----------------------------------
-    if st.button('Processar desconto', type='primary'):
-
-        #----------------------------------
-        # Processamento THE ORCHARD
-        #----------------------------------
-        if report_option == 'The Orchard (Europa)':
+    if report_option == 'The Orchard (Europa)':
+        
+        df = pd.read_excel(uploaded_file)
+        
+        if st.button('Processar desconto', type='primary', key='process_orchard'):
             net_total = df['Label Share Net Receipts'].sum()
+            st.session_state['orchard_net_total'] = net_total
 
-            # Aplica a fórmula de withholding diretamente na coluna original
+            # Aplica a fórmula de withholding
             df['Label Share Net Receipts'] = df.apply(
                 lambda row: row['Label Share Net Receipts'] - ((row['Label Share Net Receipts'] * 30) / 100)
                 if row['Territory'] == 'USA' else row['Label Share Net Receipts'],
@@ -121,35 +164,47 @@ if uploaded_file is not None:
             withholding_total = df['Label Share Net Receipts'].sum()
             total_withheld = net_total - withholding_total
 
-            # Exibe os resultados
-            st.write(f'O valor Net é **USD {net_total:,.2f}**')
-            st.write(f'O valor Net menos withholding é **USD {withholding_total:,.2f}**')
-            st.write(f'O total de withholding aplicado é **USD {total_withheld:,.2f}**')
+            # Salva os resultados no session_state
+            st.session_state['orchard_withholding_total'] = withholding_total
+            st.session_state['orchard_total_withheld'] = total_withheld
 
-            # Preparar o arquivo para download
+            # Prepara o arquivo para download
             output = BytesIO()
             writer = pd.ExcelWriter(output, engine='xlsxwriter')
             df.to_excel(writer, index=False)
             writer.close()
+            st.session_state['orchard_processed_data'] = output.getvalue()
 
+        # Exibe os resultados se existirem no session_state
+        if st.session_state['orchard_net_total'] is not None:
+            st.write(f'O valor Net é **USD {st.session_state["orchard_net_total"]:,.2f}**')
+            st.write(f'O total de withholding aplicado é **USD {st.session_state["orchard_total_withheld"]:,.2f}**')
+            st.write(f':red[O valor Net menos withholding é **USD {st.session_state["orchard_withholding_total"]:,.2f}**]')
+
+            # Botão de download
             st.download_button(
                 label="Baixar arquivo processado",
-                data=output.getvalue(),
+                data=st.session_state['orchard_processed_data'],
                 file_name=adjust_file_name(original_file_name),
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+    )
 
-        #----------------------------------
-        # Processamento INGROOVES
-        #----------------------------------
-        elif report_option == 'Ingrooves':
+    #----------------------------------
+    # Processamento INGROOVES
+    #----------------------------------
+    elif report_option == 'Ingrooves':
+        
+        sheet_name = 'Digital Sales Details'
+        df = pd.read_excel(uploaded_file, sheet_name=sheet_name)
+        
+        # Filtra a linha de total
+        df = df[~df['Sales Classification'].str.contains("Total", case=False, na=False)]
 
-            # Filtra a linha de total para não somar em duplicidade
-            df = df[~df['Sales Classification'].str.contains("Total", case=False, na=False)]
-
+        if st.button('Processar desconto', type='primary', key='process_ingrooves'):
             net_total = df['Net Dollars after Fees'].sum()
+            st.session_state['ingrooves_net_total'] = net_total
 
-            # Aplica a fórmula diretamente na coluna original
+            # Aplica a fórmula
             df['Net Dollars after Fees'] = df.apply(
                 lambda row: row['Net Dollars after Fees'] - ((row['Net Dollars after Fees'] * 30) / 100)
                 if row['Territory'] == 'United States' else row['Net Dollars after Fees'],
@@ -159,29 +214,36 @@ if uploaded_file is not None:
             withholding_total = df['Net Dollars after Fees'].sum()
             total_withheld = net_total - withholding_total
 
-            # Exibe os resultados
-            st.write(f'O valor Net é **USD {net_total:,.2f}**')
-            st.write(f'O valor Net menos withholding é **USD {withholding_total:,.2f}**')
-            st.write(f'O total de withholding aplicado é **USD {total_withheld:,.2f}**')
+            # Salva os resultados no session_state
+            st.session_state['ingrooves_withholding_total'] = withholding_total
+            st.session_state['ingrooves_total_withheld'] = total_withheld
 
-            # Preparar o arquivo para download
+            # Prepara o arquivo para download
             output = BytesIO()
             writer = pd.ExcelWriter(output, engine='xlsxwriter')
             df.to_excel(writer, sheet_name=sheet_name, index=False)
             writer.close()
+            st.session_state['ingrooves_processed_data'] = output.getvalue()
 
+        # Exibe os resultados se existirem no session_state
+        if st.session_state['ingrooves_net_total'] is not None:
+            st.write(f'O valor Net é **USD {st.session_state["ingrooves_net_total"]:,.2f}**')
+            st.write(f'O total de withholding aplicado é **USD {st.session_state["ingrooves_total_withheld"]:,.2f}**')
+            st.write(f':red[O valor Net menos withholding é **USD {st.session_state["ingrooves_withholding_total"]:,.2f}**]')
+
+            # Botão de download
             st.download_button(
                 label="Baixar arquivo processado",
-                data=output.getvalue(),
+                data=st.session_state['ingrooves_processed_data'],
                 file_name=adjust_file_name(original_file_name),
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
-        #----------------------------------
-        # Processamento ONERPM com separação por moeda
-        #----------------------------------
-        elif report_option == 'Onerpm':
-        
+    #----------------------------------
+    # Processamento ONERPM com separação por moeda
+    #----------------------------------
+    elif report_option == 'Onerpm':
+        if st.button('Processar desconto', type='primary', key='process_onerpm'):
             # Reseta as variáveis de estado da sessão
             st.session_state['total_net_usd'] = 0
             st.session_state['total_net_brl'] = 0
@@ -286,6 +348,33 @@ if uploaded_file is not None:
                             'output': output.getvalue()
                         })
 
+# Após o processamento dos arquivos e antes de exibir os resultados individuais
+    if st.session_state['onerpm_results']:
+        # Criar um buffer para o arquivo ZIP
+        zip_buffer = BytesIO()
+        
+        # Criar o arquivo ZIP
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            for result in st.session_state['onerpm_results']:
+                sheet = result['sheet']
+                currency = result['currency']
+                output_data = result['output']
+                
+                # Adicionar cada arquivo Excel ao ZIP
+                file_name = adjust_file_name_onerpm(f"{sheet}_{currency}")
+                zip_file.writestr(file_name, output_data)
+        
+        # Botão para download do ZIP
+        st.download_button(
+            label="📦 Baixar todos os arquivos (zip)",
+            data=zip_buffer.getvalue(),
+            file_name=f"onerpm_processed_files.zip",
+            mime="application/zip",
+            help="Clique para baixar todos os arquivos processados em um único arquivo ZIP"
+        )
+        
+        st.divider()
+
     #----------------------------------
     # Exibe os resultados armazenados na sessão
     #----------------------------------
@@ -300,9 +389,9 @@ if uploaded_file is not None:
 
             st.markdown(f'''##### :blue[Planilha {sheet} {currency} Processada]''')
             st.write(f'O valor Net é **{currency} {net_total:,.2f}**')
-            st.write(f'O valor Net menos Fee é **{currency} {withholding_total:,.2f}**')
             st.write(f'O total de Fee aplicado é **{currency} {total_withheld:,.2f}**')
-
+            st.write(f':red[O valor Net menos Fee é **{currency} {withholding_total:,.2f}**]')
+            
             st.download_button(
                 label=f"Baixar {sheet} processado ({currency})",
                 data=output_data,

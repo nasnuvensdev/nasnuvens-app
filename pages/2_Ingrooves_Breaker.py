@@ -80,8 +80,9 @@ if st.session_state.processed_data:
 
     # Exibe os valores processados
     st.write(f'O valor Net é **USD {st.session_state.net_dollars:,.2f}**')
-    st.write(f'O valor Net menos withholding é **USD {st.session_state.net_withholding_total:,.2f}**')
     st.write(f'O total de withholding aplicado é **USD {st.session_state.total_withheld:,.2f}**')
+    st.write(f':red[O valor Net menos withholding é **USD {st.session_state.net_withholding_total:,.2f}**]')
+    
 
     st.divider()
 
