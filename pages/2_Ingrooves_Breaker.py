@@ -3,11 +3,31 @@ import pandas as pd
 from io import BytesIO
 
 #----------------------------------
-# Withholding Calculator
+# Ingrooves Breaker
 #----------------------------------
 
 st.title("Ingrooves Breaker")
 st.caption("Desconta 30% das receitas EUA do relatório Ingrooves e separa por artista.")
+
+#----------------------------------
+# Inicializa variáveis de estado da sessão
+#----------------------------------
+if 'uploaded_file' not in st.session_state:
+    st.session_state.uploaded_file = None
+if 'net_dollars' not in st.session_state:
+    st.session_state.net_dollars = None
+if 'net_withholding_total' not in st.session_state:
+    st.session_state.net_withholding_total = None
+if 'total_withheld' not in st.session_state:
+    st.session_state.total_withheld = None
+if 'processed_data' not in st.session_state:  # Adicionando esta linha
+    st.session_state.processed_data = None
+if 'show_summary_button' not in st.session_state:
+    st.session_state.show_summary_button = False
+if 'summary_df' not in st.session_state:
+    st.session_state.summary_df = None
+if 'total_geral_values' not in st.session_state:
+    st.session_state.total_geral_values = None
 
 #----------------------------------
 # Função para resetar estado ao carregar novo arquivo
