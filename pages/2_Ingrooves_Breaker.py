@@ -13,46 +13,53 @@ st.caption("Desconta 30% das receitas EUA do relatório Ingrooves e separa por a
 # Inicializa variáveis de estado da sessão
 #----------------------------------
 if 'uploaded_file' not in st.session_state:
-    st.session_state.uploaded_file = None
+    st.session_state['uploaded_file'] = None
 if 'net_dollars' not in st.session_state:
-    st.session_state.net_dollars = None
+    st.session_state['net_dollars'] = None
 if 'net_withholding_total' not in st.session_state:
-    st.session_state.net_withholding_total = None
+    st.session_state['net_withholding_total'] = None
 if 'total_withheld' not in st.session_state:
-    st.session_state.total_withheld = None
-if 'processed_data' not in st.session_state:  # Adicionando esta linha
-    st.session_state.processed_data = None
+    st.session_state['total_withheld'] = None
+if 'processed_data' not in st.session_state:
+    st.session_state['processed_data'] = None
 if 'show_summary_button' not in st.session_state:
-    st.session_state.show_summary_button = False
+    st.session_state['show_summary_button'] = False
 if 'summary_df' not in st.session_state:
-    st.session_state.summary_df = None
+    st.session_state['summary_df'] = None
 if 'total_geral_values' not in st.session_state:
-    st.session_state.total_geral_values = None
+    st.session_state['total_geral_values'] = None
 
 #----------------------------------
 # Função para resetar estado ao carregar novo arquivo
 #----------------------------------
-
 def reset_state():
-    st.session_state.net_dollars = None
-    st.session_state.net_withholding_total = None
-    st.session_state.total_withheld = None
-    st.session_state.processed_data = None
-    st.session_state.show_summary_button = False
-    st.session_state.summary_df = None
-    st.session_state.total_geral_values = None
-    st.session_state.uploaded_file = None
+    st.session_state['net_dollars'] = None
+    st.session_state['net_withholding_total'] = None
+    st.session_state['total_withheld'] = None
+    st.session_state['processed_data'] = None
+    st.session_state['show_summary_button'] = False
+    st.session_state['summary_df'] = None
+    st.session_state['total_geral_values'] = None
+    st.session_state['uploaded_file'] = None
+
+# Se um novo arquivo for carregado, resetar o estado
+
 
 #----------------------------------
 # Inicializa as variáveis no session_state
 #----------------------------------
-
-if 'uploaded_file' not in st.session_state:
-    st.session_state.uploaded_file = None
+# if 'uploaded_file' not in st.session_state:
+#     st.session_state.uploaded_file = None
 
 # Upload do arquivo
 uploaded_file = st.file_uploader("Selecione o relatório Ingrooves", key="file_uploader")
 
+# Se um novo arquivo for carregado, resetar o estado
+if uploaded_file:
+    if st.session_state['uploaded_file'] != uploaded_file:
+        reset_state()
+        st.session_state['uploaded_file'] = uploaded_file
+        
 # Se um novo arquivo for carregado, resetar o estado
 if uploaded_file:
     if st.session_state.uploaded_file != uploaded_file:
