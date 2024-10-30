@@ -438,14 +438,14 @@ def main():
                 "Publisher Admin Share (%)", 
                 min_value=0.0, 
                 max_value=100.0, 
-                value=60.0 if tipo_relatorio == "Publisher" else 0.0,
+                value=40.0 if tipo_relatorio == "Publisher" else 0.0,
                 disabled=tipo_relatorio != "Publisher"
             ) / 100
             nnc_admin_share = st.number_input(
                 "NNC Admin Share (%)", 
                 min_value=0.0, 
                 max_value=100.0,
-                value=40.0 if tipo_relatorio == "Publisher" else 0.0,
+                value=60.0 if tipo_relatorio == "Publisher" else 0.0,
                 disabled=tipo_relatorio != "Publisher"
             ) / 100
 
