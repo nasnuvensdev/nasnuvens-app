@@ -18,6 +18,19 @@ def format_currency(value):
     except:
         return value
 
+def reset_calc_area():
+    """
+    Reseta a área de cálculos para o estado inicial com tipos de dados explícitos
+    """
+    st.session_state.calc_df = pd.DataFrame({
+        'Descrição': [''] * 4,
+        'Valor': [0.00] * 4
+    }).astype({
+        'Descrição': 'string',
+        'Valor': 'float64'
+    })
+
+
 class ProcessadorRoyalties:
     def __init__(self, obras_cadastradas, tipo_relatorio, autor, editora, 
                  writer_share=0.5, nnc_writer_share=0.5,
@@ -120,7 +133,7 @@ class ProcessadorRoyalties:
             {
                 'cod_obra': obra,
                 'titulo': titulo,
-                'titular': 'NNC (Publisher)',
+                'titular': 'NNC (Acquirer)',
                 'percentual': self.nnc_publisher_share * 100,
                 'valor_calculado': nnc_publisher_valor,
                 'tipo': 'aquisicao'
@@ -128,7 +141,7 @@ class ProcessadorRoyalties:
             {
                 'cod_obra': obra,
                 'titulo': titulo,
-                'titular': 'Fee',
+                'titular': 'NNC (Admin)',
                 'percentual': self.publisher_share * self.nnc_admin_share * 100,
                 'valor_calculado': admin_fee_valor,
                 'tipo': 'aquisicao'
@@ -306,7 +319,7 @@ class ProcessadorRoyalties:
             if total_acquired > 0:
                 autor_total = total_acquired * self.writer_share
                 linhas.append({
-                    'TITULAR': f'{self.autor} (Writer)',
+                    'TITULAR': f'{self.autor} (Writer Share)',
                     'PERCENTUAL': f"{self.writer_share * 100:.1f}%",
                     'TOTAL CALCULADO': autor_total
                 })
@@ -321,7 +334,7 @@ class ProcessadorRoyalties:
             # Calcula o valor para NNC (apenas das obras adquiridas)
             nnc_acquired_total = total_acquired * self.nnc_writer_share
             linhas.append({
-                'TITULAR': 'NNC (Writer) - Obras Adquiridas',
+                'TITULAR': 'NNC Acquirer (Writer Share)',
                 'PERCENTUAL': f"{self.nnc_writer_share * 100:.1f}%",
                 'TOTAL CALCULADO': nnc_acquired_total
             })
@@ -465,6 +478,14 @@ def main():
     # Upload do relatório de royalties
     relatorio_file = st.file_uploader(f"Upload do Relatório de {tipo_relatorio}", type=['csv'])
 
+    # Verifica se é um novo arquivo
+    if relatorio_file is not None:
+        current_file = relatorio_file.name
+        if 'last_file' not in st.session_state or st.session_state.last_file != current_file:
+            reset_calc_area()
+            st.session_state.last_file = current_file
+
+
     if relatorio_file is not None:
         try:
             # Carrega o relatório
@@ -502,17 +523,22 @@ def main():
                 total_processado = df_obras['TOTAL'].sum()
                 total_nao_processado = total_geral - total_processado
                 
-                st.write("**Total Geral**", format_currency(total_geral))
-                st.write("**Total Processado**", format_currency(total_processado))
+                st.write(f"**TOTAL GERAL: {format_currency(total_geral)}**")
+                st.write("**Total Processado:**", format_currency(total_processado))
                 if total_nao_processado > 0:
-                    st.write("**Total Não Processado (obras não cadastradas)**", format_currency(total_nao_processado))
-                st.write("**Total Obras Adquiridas**", format_currency(total_acquired))
-                st.write("**Total Obras Não Adquiridas**", format_currency(total_nao_acquired))
-                st.write("Quantidade de Obras Processadas", 
+                    st.write(f":red[**Total Não Processado (obras não cadastradas): {format_currency(total_nao_processado)}**]")
+                st.write("**Total Obras Adquiridas:**", format_currency(total_acquired))
+                st.write(f":red[**Total Obras Não Adquiridas: {format_currency(total_nao_acquired)}**]")
+                
+                st.divider()
+                
+                st.write("Quantidade de Obras Processadas:", 
                     f"{len(df_obras)} ({len(df_obras[df_obras['AQUIRED'] == 'Y'])} adquiridas)")
-                st.write("Quantidade de Obras Não Processadas (não cadastradas)", 
+                st.write("Quantidade de Obras Não Processadas (não cadastradas):", 
                     f"{len(obras_nao_cadastradas)}")
                 
+                st.divider()
+
                 # Exibe resumo por titular
                 st.header("Resumo por Titular (Writer)")
                 st.dataframe(
@@ -533,16 +559,21 @@ def main():
                 total_nao_processado = total_geral - total_processado
                 
                 # Exibe totais
-                st.write("**Total Geral**", format_currency(total_geral))
-                st.write("**Total Processado**", format_currency(total_processado))
+                st.write(f"**TOTAL GERAL: {format_currency(total_geral)}**")
+                st.write("**Total Processado:**", format_currency(total_processado))
                 if total_nao_processado > 0:
-                    st.write("**Total Não Processado (obras não cadastradas)**", format_currency(total_nao_processado))
-                st.write("**Total Obras Adquiridas**", format_currency(total_acquired))
-                st.write("**Total Obras Não Adquiridas**", format_currency(total_nao_acquired))
-                st.write("Quantidade de Obras Processadas", 
+                    st.write(f":red[**Total Não Processado (obras não cadastradas): {format_currency(total_nao_processado)}**]")
+                st.write("**Total Obras Adquiridas:**", format_currency(total_acquired))
+                st.write(f":red[**Total Obras Não Adquiridas: {format_currency(total_nao_acquired)}**]")
+                
+                st.divider()
+
+                st.write("Quantidade de Obras Processadas:", 
                     f"{len(df_obras)} ({len(df_obras[df_obras['AQUIRED'] == 'Y'])} adquiridas)")
-                st.write("Quantidade de Obras Não Processadas (não cadastradas)", 
+                st.write("Quantidade de Obras Não Processadas (não cadastradas):", 
                     f"{len(obras_nao_cadastradas)}")
+                
+                st.divider()
                 
                 # Exibe os dois resumos
                 st.header("Resumo por Titular (Publisher) - Aquisição")
@@ -564,13 +595,19 @@ def main():
             # Área de cálculos           
             st.write("Área de Cálculos")
             if 'calc_df' not in st.session_state:
-                st.session_state.calc_df = pd.DataFrame(
-                    columns=['Descrição', 'Valor'],
-                    data=[['', 0.00] for _ in range(3)]  # Inicializa com 3 linhas vazias
-                )
+                reset_calc_area()
+
+            # Cria uma chave única para o editor baseada no arquivo atual
+            editor_key = f"calc_table_{st.session_state.get('last_file', 'initial')}"
+
+            # Garante que o DataFrame está com os tipos corretos antes da edição
+            current_df = st.session_state.calc_df.astype({
+                'Descrição': 'string',
+                'Valor': 'float64'
+            })
 
             edited_df = st.data_editor(
-                st.session_state.calc_df,
+                current_df,
                 column_config={
                     "Descrição": st.column_config.TextColumn(
                         "Descrição",
@@ -580,11 +617,27 @@ def main():
                         "Valor",
                         format="R$ %.2f",
                         width="small",
+                        step=0.01,  # Adiciona controle mais preciso para números decimais
                     ),
                 },
                 num_rows="dynamic",
-                key="calc_table"  # Adicionando uma key única para o editor
+                key=editor_key
             )
+
+            # Garante que o DataFrame editado mantenha os tipos corretos
+            if not edited_df.equals(current_df):
+                edited_df = edited_df.astype({
+                    'Descrição': 'string',
+                    'Valor': 'float64'
+                })
+                st.session_state.calc_df = edited_df.copy()
+
+
+            # Atualiza o DataFrame na session_state apenas se houver mudanças
+            if not edited_df.equals(st.session_state.calc_df):
+                st.session_state.calc_df = edited_df.copy()
+
+                      
 
             # Atualiza o DataFrame na session_state
             st.session_state.calc_df = edited_df  # Esta linha vai aqui, logo após o data_editor

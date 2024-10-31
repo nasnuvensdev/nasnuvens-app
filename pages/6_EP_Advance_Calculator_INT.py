@@ -123,12 +123,12 @@ class ProcessadorRoyalties:
             for _, obra in obras_acquired.iterrows():
                 resultados.extend([
                     {
-                        'TITULAR': f'{self.autor} (Writer)',
+                        'TITULAR': f'{self.autor} (Writer Share)',
                         'PERCENTUAL': self.writer_share * 100,
                         'TOTAL CALCULADO': obra['TOTAL'] * self.writer_share
                     },
                     {
-                        'TITULAR': 'NNC (Writer)',
+                        'TITULAR': 'NNC Acquirer (Writer Share)',
                         'PERCENTUAL': self.nnc_writer_share * 100,
                         'TOTAL CALCULADO': obra['TOTAL'] * self.nnc_writer_share
                     }
@@ -168,12 +168,12 @@ class ProcessadorRoyalties:
                                 'TOTAL CALCULADO': obra['TOTAL'] * self.publisher_share * self.publisher_admin_share
                             },
                             {
-                                'TITULAR': 'NNC (Publisher)',
+                                'TITULAR': 'NNC (Acquirer)',
                                 'PERCENTUAL': self.nnc_publisher_share * 100,
                                 'TOTAL CALCULADO': obra['TOTAL'] * self.nnc_publisher_share
                             },
                             {
-                                'TITULAR': 'Fee',
+                                'TITULAR': 'NNC (Admin)',
                                 'PERCENTUAL': self.publisher_share * self.nnc_admin_share * 100,
                                 'TOTAL CALCULADO': obra['TOTAL'] * self.publisher_share * self.nnc_admin_share
                             }
@@ -371,19 +371,23 @@ def main():
             total_nao_processado = total_geral - total_processado
 
             # Exibe totais
-            st.write("**Total Geral**", format_currency(total_geral))
-            st.write("**Total Processado**", format_currency(total_processado))
+            st.write(f"**TOTAL GERAL: {format_currency(total_geral)}**")
+            st.write("**Total Processado:**", format_currency(total_processado))
             if total_nao_processado > 0:
-                st.write("**Total Não Processado (obras não cadastradas)**", format_currency(total_nao_processado))
-            st.write("**Total Obras Adquiridas**", format_currency(total_acquired))
-            st.write("**Total Obras Não Adquiridas**", format_currency(total_nao_acquired))
+                st.write(f":red[**Total Não Processado (obras não cadastradas): {format_currency(total_nao_processado)}**]")
+            st.write("**Total Obras Adquiridas:**", format_currency(total_acquired))
+            st.write(f":red[**Total Obras Não Adquiridas: {format_currency(total_nao_acquired)}**]")
+
+            st.divider()
 
             # Informações sobre quantidade de obras
             obras_nao_cadastradas = set(relatorio['ISRC/ISWC'].unique()) - set(obras_cadastradas['ISWC'].unique())
-            st.write("Quantidade de Obras Processadas", 
+            st.write("Quantidade de Obras Processadas:", 
                     f"{len(df_obras)} ({len(df_obras[df_obras['AQUIRED'] == 'Y'])} adquiridas)")
-            st.write("Quantidade de Obras Não Processadas (não cadastradas)", 
+            st.write("Quantidade de Obras Não Processadas (não cadastradas):", 
                     f"{len(obras_nao_cadastradas)}")
+
+            st.divider()
 
             # Exibe resumos por titular
             if tipo_relatorio == "Writer":
@@ -400,23 +404,8 @@ def main():
                 st.header("Resumo por Titular (Publisher) - Aquisição")
                 # Formatação do campo PERCENTUAL para aquisição
                 df_titulares_aquisicao['PERCENTUAL'] = df_titulares_aquisicao['PERCENTUAL'].apply(lambda x: f"{x:.1f}%")
-                
-                # Criar uma ordem personalizada para os titulares
-                ordem_titulares = {
-                    'NNC (Publisher)': 1,
-                    f'{editora} (Publisher)': 2,
-                    'Fee': 3
-                }
-                
-                # Adicionar coluna temporária para ordenação
-                df_titulares_aquisicao['ordem'] = df_titulares_aquisicao['TITULAR'].map(ordem_titulares)
-                
-                # Ordenar o DataFrame
-                df_titulares_aquisicao = df_titulares_aquisicao.sort_values('ordem')
-                
-                # Remover a coluna de ordenação
-                df_titulares_aquisicao = df_titulares_aquisicao.drop('ordem', axis=1)
-                
+                                               
+                               
                 st.dataframe(
                     df_titulares_aquisicao.style.format({
                         'TOTAL CALCULADO': format_currency
