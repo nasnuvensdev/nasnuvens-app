@@ -5,7 +5,66 @@ from datetime import datetime
 import os
 
 # Caminho fixo para a planilha de obras
-OBRAS_PATH = os.path.join("data", "obras-cadastradas-DOUGLAS-CEZAR_v2.xlsx")
+#OBRAS_PATH = os.path.join("data", "obras-cadastradas-DOUGLAS-CEZAR_v2.xlsx")
+EDITORAS_DISPONIVEIS = [
+    'Selecione uma editora',  # Opção padrão
+    'DC Editora',
+    
+    # Adicione mais editoras conforme necessário
+]
+
+SHARES_POR_EDITORA = {
+    # Adicione mais editoras conforme necessário
+    'Selecione uma editora': {
+        'publisher_total': 50.0,
+        'nnc_publisher': 50.0,
+        'publisher_admin': 50.0,
+        'nnc_admin': 50.0
+    },
+
+    'DC Editora': {
+        'publisher_total': 50.0,
+        'nnc_publisher': 50.0,
+        'publisher_admin': 40.0,
+        'nnc_admin': 60.0
+    }
+   
+}
+
+@st.cache_data
+def listar_artistas():
+    """
+    Lista todos os artistas disponíveis no diretório catalogs
+    """
+    catalogs_path = os.path.join("data", "catalogs")
+    try:
+        # Lista apenas os diretórios dentro de catalogs
+        artistas = [d for d in os.listdir(catalogs_path) 
+                   if os.path.isdir(os.path.join(catalogs_path, d))]
+        return sorted(artistas)
+    except Exception as e:
+        st.error(f"Erro ao listar artistas: {str(e)}")
+        return []
+
+@st.cache_data
+def encontrar_arquivo_obras(artista):
+    """
+    Encontra o arquivo de obras mais recente para o artista selecionado
+    """
+    pasta_artista = os.path.join("data", "catalogs", artista)
+    try:
+        # Lista todos os arquivos xlsx na pasta do artista
+        arquivos = [f for f in os.listdir(pasta_artista) 
+                   if f.endswith('.xlsx') and 'obras-cadastradas' in f.lower()]
+        if not arquivos:
+            return None
+        # Retorna o caminho completo do arquivo mais recente
+        arquivo_mais_recente = max(arquivos)
+        return os.path.join(pasta_artista, arquivo_mais_recente)
+    except Exception as e:
+        st.error(f"Erro ao buscar arquivo de obras para {artista}: {str(e)}")
+        return None
+
 
 def format_currency(value):
     """
@@ -381,27 +440,45 @@ class ProcessadorRoyalties:
             return df_titulares            
 
 
-def carregar_obras():
+@st.cache_data
+def carregar_obras(artista):
     """
-    Carrega a planilha de obras do caminho fixo
+    Carrega a planilha de obras do artista selecionado
     """
+    caminho_arquivo = encontrar_arquivo_obras(artista)
+    if not caminho_arquivo:
+        st.error(f"Nenhum arquivo de obras encontrado para {artista}")
+        return None
+    
     try:
-        obras_cadastradas = pd.read_excel(OBRAS_PATH)
+        obras_cadastradas = pd.read_excel(caminho_arquivo)
         return obras_cadastradas
     except Exception as e:
         st.error(f"Erro ao carregar planilha de obras: {str(e)}")
-        st.error(f"Verifique se o arquivo existe em: {OBRAS_PATH}")
+        st.error(f"Verifique se o arquivo existe em: {caminho_arquivo}")
         return None
     
 def main():
     st.title("EP Advance Calculator")
     
-    # Carrega a planilha de obras no início
-    obras_cadastradas = carregar_obras()
+    # Seletor de artista
+    artistas = listar_artistas()
+    if not artistas:
+        st.error("Nenhum artista encontrado no diretório de catálogos")
+        st.stop()
+    
+    artista_selecionado = st.selectbox(
+        "Selecione o Artista",
+        artistas,
+        format_func=lambda x: x.replace('-', ' ').title()
+    )
+    
+    # Carrega a planilha de obras do artista selecionado
+    obras_cadastradas = carregar_obras(artista_selecionado)
     if obras_cadastradas is None:
         st.stop()
     
-    # Seletor de tipo de relatório
+    # Seletor de tipo de relatório - MOVIDO PARA ANTES DAS CONFIGURAÇÕES
     tipo_relatorio = st.radio(
         "Tipo de Relatório",
         ["Writer", "Publisher"],
@@ -414,7 +491,11 @@ def main():
         
         with col1:
             st.subheader("Writer Shares")
-            autor = st.text_input("Nome do Autor", "Douglas Cezar")
+            autor = st.text_input(
+                "Nome do Autor", 
+                value=artista_selecionado.replace('-', ' ').title(),  # Formata o nome do artista selecionado
+                key="autor_nome"
+            )
             writer_share = st.number_input(
                 "Writer Share (%)", 
                 min_value=0.0, 
@@ -431,35 +512,62 @@ def main():
             ) / 100
         
         with col2:
+            
+           
             st.subheader("Publisher Shares")
-            editora = st.text_input("Nome da Editora", "DC Editora")
+        
+            # Seletor de editora
+            editora = st.selectbox(
+                "Nome da Editora",
+                options=EDITORAS_DISPONIVEIS,
+                key="editora_nome"
+            )
+            
+            # Obtém os percentuais padrão para a editora selecionada
+            shares_padrao = SHARES_POR_EDITORA.get(editora, SHARES_POR_EDITORA['Selecione uma editora'])
+            
+            # Checkbox para habilitar edição manual
+            ajuste_manual = st.checkbox("Permitir ajuste manual dos percentuais", 
+                                    value=False, 
+                                    key="ajuste_manual")
+            
+            # Campos desabilitados se nenhuma editora selecionada ou não é tipo Publisher
+            campos_desabilitados = (editora == 'Selecione uma editora') or (tipo_relatorio != "Publisher")
+            
+            # Publisher Total Share
             publisher_total_share = st.number_input(
                 "Publisher Total Share (%)", 
                 min_value=0.0, 
                 max_value=100.0, 
-                value=50.0 if tipo_relatorio == "Publisher" else 0.0,
-                disabled=tipo_relatorio != "Publisher"
+                value=shares_padrao['publisher_total'],
+                disabled=campos_desabilitados or not ajuste_manual
             ) / 100
+            
+            # NNC Publisher Share
             nnc_publisher_share = st.number_input(
                 "NNC Publisher Share (%)",
                 min_value=0.0,
                 max_value=100.0,
-                value=50.0 if tipo_relatorio == "Publisher" else 0.0,
-                disabled=tipo_relatorio != "Publisher"
+                value=shares_padrao['nnc_publisher'],
+                disabled=campos_desabilitados or not ajuste_manual
             ) / 100
+            
+            # Publisher Admin Share
             publisher_admin_share = st.number_input(
                 "Publisher Admin Share (%)", 
                 min_value=0.0, 
                 max_value=100.0, 
-                value=40.0 if tipo_relatorio == "Publisher" else 0.0,
-                disabled=tipo_relatorio != "Publisher"
+                value=shares_padrao['publisher_admin'],
+                disabled=campos_desabilitados or not ajuste_manual
             ) / 100
+            
+            # NNC Admin Share
             nnc_admin_share = st.number_input(
                 "NNC Admin Share (%)", 
                 min_value=0.0, 
                 max_value=100.0,
-                value=60.0 if tipo_relatorio == "Publisher" else 0.0,
-                disabled=tipo_relatorio != "Publisher"
+                value=shares_padrao['nnc_admin'],
+                disabled=campos_desabilitados or not ajuste_manual
             ) / 100
 
         # Adiciona validações dos percentuais

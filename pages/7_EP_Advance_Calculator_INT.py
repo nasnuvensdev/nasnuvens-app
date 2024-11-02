@@ -5,7 +5,7 @@ from datetime import datetime
 import os
 
 # Caminho fixo para a planilha de obras
-OBRAS_PATH = os.path.join("data", "obras-cadastradas-DOUGLAS-CEZAR_iswc.xlsx")
+OBRAS_PATH = os.path.join("data", "catalogs", "douglas-cezar", "obras-cadastradas-DOUGLAS-CEZAR.xlsx")
 
 def format_currency(value):
     """

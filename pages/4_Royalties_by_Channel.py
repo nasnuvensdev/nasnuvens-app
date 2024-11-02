@@ -13,8 +13,8 @@ descritivo = st.caption("Cria a planilha Royalties by Channel para uso do financ
 source_file = st.file_uploader('Carregar o arquivo CSV original', type=['csv'])  # Carregando o arquivo CSV
 
 # Definindo caminhos fixos para as planilhas de mapeamento
-target_path = 'data/planilha-target.xlsx'
-mapping_file_path = 'data/mapping-rubricas.xlsx'
+target_path = 'data/mapping/planilha-target.xlsx'
+mapping_file_path = 'data/mapping/mapping-rubricas.xlsx'
 
 # Variáveis adicionais para o mês e ano
 mes = st.number_input('Mês', min_value=1, max_value=12, value=1, step=1)  # Exemplo de período
