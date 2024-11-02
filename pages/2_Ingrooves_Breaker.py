@@ -4,9 +4,10 @@ from io import BytesIO
 import zipfile
 import locale
 import unicodedata
+from babel.numbers import format_decimal
+from babel.numbers import format_currency
 
-# Configura o locale para pt_BR
-locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
+
 
 #----------------------------------
 # Configuração dos Agrupamentos
@@ -103,10 +104,18 @@ def normalize_text(s):
 
 
 def format_br(value):
+    def format_br(value):
+        try:
+            return format_decimal(value, locale='pt_BR')
+        except:
+            return str(value)
+
+def format_br(value):
     try:
-        return locale.format_string('%.2f', value, grouping=True)
+        return format_currency(value, 'BRL', locale='pt_BR')
     except:
         return str(value)
+
 
 def format_fx_rate(value):
     return str(value).replace('.', ',')
