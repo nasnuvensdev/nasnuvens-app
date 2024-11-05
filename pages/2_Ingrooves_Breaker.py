@@ -6,21 +6,13 @@ import locale
 import unicodedata
 
 
-# Configura o locale para pt_BR
-try:
-    locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
-except locale.Error:
-    try:
-        # Primeira alternativa: tentar apenas pt_BR
-        locale.setlocale(locale.LC_ALL, 'pt_BR')
-    except locale.Error:
-        try:
-            # Segunda alternativa: tentar Portuguese_Brazil
-            locale.setlocale(locale.LC_ALL, 'Portuguese_Brazil')
-        except locale.Error:
-            # Fallback: usar o locale padrão do sistema
-            locale.setlocale(locale.LC_ALL, '')
-            st.warning('Não foi possível configurar o locale brasileiro. Usando configurações padrão do sistema.')
+def format_br(value):
+    # Converte para string com 2 casas decimais, usando vírgula como decimal e ponto como separador de milhar
+    return f"{value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+def format_fx_rate(value):
+    # Formata a taxa de câmbio com 4 casas decimais
+    return f"{value:.4f}".replace(".", ",")
 
 #----------------------------------
 # Configuração dos Agrupamentos
@@ -312,9 +304,9 @@ if st.session_state.show_summary and st.session_state.summary_df is not None:
     
     # DataFrame formatado para exibição
     display_df = st.session_state.summary_df.copy()
-    display_df['Total Net Dollars'] = display_df['Total Net Dollars'].apply(format_br)
-    display_df['FX Rate'] = display_df['FX Rate'].apply(format_fx_rate)
-    display_df['Total BRL'] = display_df['Total BRL'].apply(format_br)
+    display_df['Total Net Dollars'] = display_df['Total Net Dollars'].apply(lambda x: f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+    display_df['FX Rate'] = display_df['FX Rate'].apply(lambda x: f"{x:.4f}".replace(".", ","))
+    display_df['Total BRL'] = display_df['Total BRL'].apply(lambda x: f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
     st.dataframe(display_df)
 
     # Botão de download das planilhas
