@@ -5,8 +5,9 @@ import zipfile
 import locale
 import unicodedata
 
+
 # Configura o locale para pt_BR
-locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
+locale.setlocale(locale.LC_ALL, '')
 
 #----------------------------------
 # Configuração dos Agrupamentos
