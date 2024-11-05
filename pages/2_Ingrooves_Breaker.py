@@ -4,10 +4,9 @@ from io import BytesIO
 import zipfile
 import locale
 import unicodedata
-from babel.numbers import format_decimal
-from babel.numbers import format_currency
 
-
+# Configura o locale para pt_BR
+locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
 
 #----------------------------------
 # Configuração dos Agrupamentos
@@ -104,18 +103,10 @@ def normalize_text(s):
 
 
 def format_br(value):
-    def format_br(value):
-        try:
-            return format_decimal(value, locale='pt_BR')
-        except:
-            return str(value)
-
-def format_br(value):
     try:
-        return format_currency(value, 'BRL', locale='pt_BR')
+        return locale.format_string('%.2f', value, grouping=True)
     except:
         return str(value)
-
 
 def format_fx_rate(value):
     return str(value).replace('.', ',')
@@ -162,7 +153,7 @@ if uploaded_file is not None:
             else row['Net Dollars after Fees'],
             axis=1
         )
-
+       
         st.session_state.net_withholding_total = df['Net Dollars after Fees'].sum()
         st.session_state.total_withheld = st.session_state.net_dollars - st.session_state.net_withholding_total
         
@@ -173,12 +164,12 @@ if uploaded_file is not None:
         st.session_state.processed_data = output.getvalue()
         st.session_state.show_fx_rate = True
         
-        # Exibe os valores processados
-        st.write(f'O valor Net é **USD {format_br(st.session_state.net_dollars)}**')
-        st.write(f'O total de withholding aplicado é **USD {format_br(st.session_state.total_withheld)}**')
-        st.write(f':red[O valor Net menos withholding é **USD {format_br(st.session_state.net_withholding_total)}**]')
-        
-        st.divider()
+# Exibe os valores processados
+if st.session_state.net_dollars is not None and st.session_state.net_withholding_total is not None:
+    st.write(f'O valor Original é **USD {format_br(st.session_state.net_dollars)}**')
+    st.write(f'O total de withholding aplicado é **USD {format_br(st.session_state.total_withheld)}**')
+    st.write(f':red[O valor Net menos withholding é **USD {format_br(st.session_state.net_withholding_total)}**]')
+    st.divider()
 
 # Área de taxa de câmbio e resumo
 if st.session_state.show_fx_rate:
@@ -196,7 +187,13 @@ if st.session_state.show_fx_rate:
         for artist in TARGET_GROUPS:
             artist_group = df[df['Artist'].apply(lambda x: isinstance(x, str) and artist.lower() in x.lower())]
             if not artist_group.empty:
-                total_net_dollars = artist_group['Net Dollars after Fees'].sum()
+                # Aplicar o desconto de 30% para registros dos EUA
+                total_net_dollars = artist_group.apply(
+                    lambda row: row['Net Dollars after Fees'] * 0.7 if row['Territory'] == 'United States' 
+                    else row['Net Dollars after Fees'],
+                    axis=1
+                ).sum()
+
                 total_brl = total_net_dollars * fx_rate
                 grouped_df = pd.concat([grouped_df, pd.DataFrame([{
                     "Artist": artist,
@@ -215,12 +212,17 @@ if st.session_state.show_fx_rate:
                     for keyword in keywords
                 )
             )
-                            
-                       
-                       
+                                            
+                 
             artist_group = df[condition]
             if not artist_group.empty:
-                total_net_dollars = artist_group['Net Dollars after Fees'].sum()
+                # Aplicar o desconto de 30% para registros dos EUA
+                total_net_dollars = artist_group.apply(
+                    lambda row: row['Net Dollars after Fees'] * 0.7 if row['Territory'] == 'United States' 
+                    else row['Net Dollars after Fees'],
+                    axis=1
+                ).sum()
+
                 total_brl = total_net_dollars * fx_rate
                 grouped_df = pd.concat([grouped_df, pd.DataFrame([{
                     "Artist": main_artist,
@@ -249,7 +251,13 @@ if st.session_state.show_fx_rate:
         for artist in all_artists:
             if artist not in processed_artists:
                 artist_data = df[df['Artist'] == artist]
-                total_net_dollars = artist_data['Net Dollars after Fees'].sum()
+                # Aplicar o desconto de 30% para registros dos EUA
+                total_net_dollars = artist_data.apply(
+                    lambda row: row['Net Dollars after Fees'] * 0.7 if row['Territory'] == 'United States' 
+                    else row['Net Dollars after Fees'],
+                    axis=1
+                ).sum()
+
                 if total_net_dollars > 0:  # Só inclui se tiver valor positivo
                     unclassified_artists.append({
                         'artist': artist,
@@ -263,8 +271,13 @@ if st.session_state.show_fx_rate:
         # Salvar na sessão para exibição posterior
         st.session_state['unclassified_artists'] = unclassified_artists
 
-        # Cálculo dos totais gerais e diferenças
-        total_net_dollars = df['Net Dollars after Fees'].sum()
+        # Calcular o total geral considerando o withholding
+        total_net_dollars = df.apply(
+            lambda row: row['Net Dollars after Fees'] * 0.7 if row['Territory'] == 'United States' 
+            else row['Net Dollars after Fees'],
+            axis=1
+        ).sum()
+
         total_brl = total_net_dollars * fx_rate
         difference_net_dollars = total_net_dollars - total_net_dollars_df
         difference_brl = total_brl - total_brl_df
@@ -275,7 +288,6 @@ if st.session_state.show_fx_rate:
             'Difference Net Dollars': round(difference_net_dollars, 2),
             'Difference BRL': round(difference_brl, 2)
         }
-
         st.session_state.artist_dataframes = artist_dfs
         st.session_state.summary_df = grouped_df
 
