@@ -7,7 +7,20 @@ import unicodedata
 
 
 # Configura o locale para pt_BR
-locale.setlocale(locale.LC_ALL, '')
+try:
+    locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
+except locale.Error:
+    try:
+        # Primeira alternativa: tentar apenas pt_BR
+        locale.setlocale(locale.LC_ALL, 'pt_BR')
+    except locale.Error:
+        try:
+            # Segunda alternativa: tentar Portuguese_Brazil
+            locale.setlocale(locale.LC_ALL, 'Portuguese_Brazil')
+        except locale.Error:
+            # Fallback: usar o locale padrão do sistema
+            locale.setlocale(locale.LC_ALL, '')
+            st.warning('Não foi possível configurar o locale brasileiro. Usando configurações padrão do sistema.')
 
 #----------------------------------
 # Configuração dos Agrupamentos
