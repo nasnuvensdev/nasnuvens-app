@@ -10,7 +10,7 @@ pd.set_option('display.max_colwidth', None)
 #----------------------------------
 # Concat & Totalize Files
 #----------------------------------
-st.header("Concat Backoffice")
+st.title("Concat Backoffice")
 st.caption("Concatena e totaliza os arquivos Backoffice para conferência e inclusão no Reprtoir.")
     
 # Upload dos arquivos
