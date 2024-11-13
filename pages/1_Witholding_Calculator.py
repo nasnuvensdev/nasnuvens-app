@@ -311,15 +311,17 @@ if uploaded_file is not None:
                         # Calcula a proporção do valor total para cada linha
                         if currency == 'USD' and st.session_state['total_net_usd'] > 0:
                             df_sheet_currency['Proportion'] = df_sheet_currency['Net'] / st.session_state['total_net_usd']
-                            df_sheet_currency['Fee Applied'] = df_sheet_currency['Proportion'] * usd_tax
-                            st.session_state['total_usd_fee_applied'] += df_sheet_currency['Fee Applied'].sum()
-                            df_sheet_currency['Net'] -= df_sheet_currency['Fee Applied']  # Aplica o desconto no valor 'Net'
+                            fee_applied = df_sheet_currency['Proportion'] * usd_tax
+                            st.session_state['total_usd_fee_applied'] += fee_applied.sum()
+                            df_sheet_currency['Net'] = df_sheet_currency['Net'] - fee_applied
+                            df_sheet_currency = df_sheet_currency.drop('Proportion', axis=1)  # Remove a coluna Proportion
 
                         elif currency == 'BRL' and st.session_state['total_net_brl'] > 0:
                             df_sheet_currency['Proportion'] = df_sheet_currency['Net'] / st.session_state['total_net_brl']
-                            df_sheet_currency['Fee Applied'] = df_sheet_currency['Proportion'] * brl_tax
-                            st.session_state['total_brl_fee_applied'] += df_sheet_currency['Fee Applied'].sum()
-                            df_sheet_currency['Net'] -= df_sheet_currency['Fee Applied']  # Aplica o desconto no valor 'Net'
+                            fee_applied = df_sheet_currency['Proportion'] * brl_tax
+                            st.session_state['total_brl_fee_applied'] += fee_applied.sum()
+                            df_sheet_currency['Net'] = df_sheet_currency['Net'] - fee_applied
+                            df_sheet_currency = df_sheet_currency.drop('Proportion', axis=1)
 
                         withholding_total = df_sheet_currency['Net'].sum()
                         total_withheld = net_total - withholding_total
