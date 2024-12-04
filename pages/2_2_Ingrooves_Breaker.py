@@ -37,7 +37,18 @@ ARTIST_KEYWORDS = {
     "Carlinhos Brown": [
         "heloa",  # Removido o acento
         "carlinhos brown",
-        "timbalada"
+        "timbalada",
+        "LIMMA",
+        "Rafa Chagas",
+        "Neto Muniz",
+        "Rafa Chagas",
+        "Felipe El",
+        "Felipe El",
+        "Mukindala",
+        "Paula Sanffer",
+        "PUGAH",
+        "Timbaladies"
+
     ],
 
     "Rodolfo Abrantes": [
