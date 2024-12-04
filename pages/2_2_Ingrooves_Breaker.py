@@ -47,7 +47,11 @@ ARTIST_KEYWORDS = {
         "Mukindala",
         "Paula Sanffer",
         "PUGAH",
-        "Timbaladies"
+        "Timbaladies",
+        "Paxuá",
+        "Japa System",
+        "MIGGA",
+        "Electrotimba"
 
     ],
 
