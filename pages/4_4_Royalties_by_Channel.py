@@ -10,7 +10,7 @@ title = st.title("Royalties by Channel")
 descritivo = st.caption("Cria a planilha Royalties by Channel para uso do financeiro.")
 
 # Inputs do usuário para os caminhos dos arquivos
-source_file = st.file_uploader('Carregar o arquivo CSV original', type=['csv'])  # Carregando o arquivo CSV
+source_file = st.file_uploader('Carregar o arquivo CSV original', type=['csv',"xlsx"])  # Carregando o arquivo CSV
 
 # Definindo caminhos fixos para as planilhas de mapeamento
 target_path = 'data/mapping/planilha-target.xlsx'
