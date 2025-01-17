@@ -46,7 +46,7 @@ def listar_artistas():
         st.error(f"Erro ao listar artistas: {str(e)}")
         return []
 
-@st.cache_data
+
 def encontrar_arquivo_obras(artista):
     """
     Encontra o arquivo de obras mais recente para o artista selecionado
@@ -440,7 +440,7 @@ class ProcessadorRoyalties:
             return df_titulares            
 
 
-@st.cache_data
+
 def carregar_obras(artista):
     """
     Carrega a planilha de obras do artista selecionado
