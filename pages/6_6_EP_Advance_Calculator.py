@@ -589,9 +589,9 @@ def main():
     # Verifica se é um novo arquivo
     if relatorio_file is not None:
         current_file = relatorio_file.name
-        if 'last_file' not in st.session_state or st.session_state.last_file != current_file:
+        if 'last_file' in st.session_state and st.session_state.last_file != current_file:
             reset_calc_area()
-            st.session_state.last_file = current_file
+        st.session_state.last_file = current_file
 
 
     if relatorio_file is not None:
