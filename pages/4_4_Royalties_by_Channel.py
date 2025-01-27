@@ -150,6 +150,9 @@ if selectbox == "UBC":
                     
                     # Reset file pointer and read main data
                     source_df = pd.read_excel(source_file, skiprows=6, usecols=["Descrição", "Rendimento Total do Titular"])
+
+                    # Remove a última linha (que contém a soma)
+                    source_df = source_df.iloc[:-1]
                     
                     # Renomeando colunas para o formato esperado
                     source_df.columns = ['Rubrica', 'Rendimentos']
