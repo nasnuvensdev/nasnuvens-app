@@ -22,7 +22,8 @@ TARGET_GROUPS = [
     "Cláudio Noam",
     "Planta E Raiz",
     "Pollo",
-    "Dom Silver"
+    "Dom Silver",
+  
 ]
 
 # Artistas que possuem múltiplos nomes/projetos para agrupar
@@ -38,26 +39,40 @@ ARTIST_KEYWORDS = {
         "heloa",  # Removido o acento
         "carlinhos brown",
         "timbalada",
-        "LIMMA",
-        "Rafa Chagas",
-        "Neto Muniz",
-        "Rafa Chagas",
-        "Felipe El",
-        "Felipe El",
-        "Mukindala",
-        "Paula Sanffer",
-        "PUGAH",
-        "Timbaladies",
-        "Paxuá",
-        "Japa System",
-        "MIGGA",
-        "Electrotimba"
+        "limma",
+        "rafa chagas",
+        "neto muniz",
+        "rafa chagas",
+        "felipe El",
+        "mukindala",
+        "paula sanffer",
+        "pugah",
+        "timbaladies",
+        "paxuá",
+        "japa system",
+        "migga",
+        "electrotimba",
+        "flavia bittencourt",
+        "lui",
+        "jaguar andrade"
 
     ],
 
     "Rodolfo Abrantes": [
         "raimundos",  # Removido o acento
         
+    ],
+
+    "Nas Nuvens Projects - Formula do Samba": [
+        "pezinho do samba"
+    ],
+
+    "CID": [
+        "nana caymmi"
+    ],
+
+    "Nas Nuvens Label": [
+        "taua cordel"
     ]
 }
 
@@ -118,9 +133,11 @@ def reset_state():
     st.session_state['artist_dataframes'] = {}
 
 def normalize_text(s):
-    s = s.lower()
-    nfkd_form = unicodedata.normalize('NFKD', s)
-    return ''.join([c for c in nfkd_form if not unicodedata.combining(c)])
+    if not isinstance(s, str):
+        return ''
+    # Remove pontuação e caracteres especiais exceto espaços
+    s = ''.join(c.lower() for c in s if c.isalnum() or c.isspace())
+    return ' '.join(s.split())
 
 
 def format_br(value):
@@ -164,6 +181,7 @@ if uploaded_file and st.session_state.uploaded_file != uploaded_file:
 if uploaded_file is not None:
     df = pd.read_excel(uploaded_file, sheet_name='Digital Sales Details')
     df = df[~df['Sales Classification'].str.contains("Total", case=False, na=False)]
+    st.session_state.df = df  # Armazena o DataFrame no session_state
     st.session_state.net_dollars = df['Net Dollars after Fees'].sum()
 
     # Botão de processamento
@@ -177,7 +195,9 @@ if uploaded_file is not None:
        
         st.session_state.net_withholding_total = df['Net Dollars after Fees'].sum()
         st.session_state.total_withheld = st.session_state.net_dollars - st.session_state.net_withholding_total
-        
+
+        df['Processed'] = False
+
         output = BytesIO()
         writer = pd.ExcelWriter(output, engine='xlsxwriter')
         df.to_excel(writer, sheet_name='Digital Sales Details', index=False)
@@ -208,12 +228,8 @@ if st.session_state.show_fx_rate:
         for artist in TARGET_GROUPS:
             artist_group = df[df['Artist'].apply(lambda x: isinstance(x, str) and artist.lower() in x.lower())]
             if not artist_group.empty:
-                # Aplicar o desconto de 30% para registros dos EUA
-                total_net_dollars = artist_group.apply(
-                    lambda row: row['Net Dollars after Fees'] * 0.7 if row['Territory'] == 'United States' 
-                    else row['Net Dollars after Fees'],
-                    axis=1
-                ).sum()
+                df.loc[artist_group.index, 'Processed'] = True  # Marca como processado
+                total_net_dollars = artist_group['Net Dollars after Fees'].sum()  # Remove o *0.7 aqui
 
                 total_brl = total_net_dollars * fx_rate
                 grouped_df = pd.concat([grouped_df, pd.DataFrame([{
@@ -233,16 +249,10 @@ if st.session_state.show_fx_rate:
                     for keyword in keywords
                 )
             )
-                                            
-                 
             artist_group = df[condition]
             if not artist_group.empty:
-                # Aplicar o desconto de 30% para registros dos EUA
-                total_net_dollars = artist_group.apply(
-                    lambda row: row['Net Dollars after Fees'] * 0.7 if row['Territory'] == 'United States' 
-                    else row['Net Dollars after Fees'],
-                    axis=1
-                ).sum()
+                df.loc[artist_group.index, 'Processed'] = True  # Marca como processado
+                total_net_dollars = artist_group['Net Dollars after Fees'].sum()  # Remove o *0.7 aqui
 
                 total_brl = total_net_dollars * fx_rate
                 grouped_df = pd.concat([grouped_df, pd.DataFrame([{
@@ -273,11 +283,8 @@ if st.session_state.show_fx_rate:
             if artist not in processed_artists:
                 artist_data = df[df['Artist'] == artist]
                 # Aplicar o desconto de 30% para registros dos EUA
-                total_net_dollars = artist_data.apply(
-                    lambda row: row['Net Dollars after Fees'] * 0.7 if row['Territory'] == 'United States' 
-                    else row['Net Dollars after Fees'],
-                    axis=1
-                ).sum()
+                total_net_dollars = artist_data['Net Dollars after Fees'].sum()
+
 
                 if total_net_dollars > 0:  # Só inclui se tiver valor positivo
                     unclassified_artists.append({
@@ -357,3 +364,5 @@ if st.session_state.show_summary and st.session_state.summary_df is not None:
                 f"- {artist_info['artist']}: USD {format_br(artist_info['net_dollars'])} "
                 f"(BRL {format_br(artist_info['brl'])})"
             )
+
+            
