@@ -187,7 +187,7 @@ def load_mapping_file():
     Carrega a planilha de mapeamento do local padrão
     """
     # Caminho para o arquivo de mapeamento
-    mapping_path = os.path.join("data", "mapping-rubricas.xlsx")
+    mapping_path = os.path.join("data", "mapping-artistas-ingrooves.xlsx")
     
     try:
         mapping_df = pd.read_excel(mapping_path)
