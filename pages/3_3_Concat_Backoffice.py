@@ -15,7 +15,7 @@ st.caption("Concatena e totaliza os arquivos Backoffice para conferência e incl
     
 # Upload dos arquivos
 uploaded_files = st.file_uploader("Faça o upload dos arquivos Excel", 
-                                type=['xlsx', 'xls'], 
+                                type=['xlsx', 'xls', 'XLSX', 'XLS'], 
                                 accept_multiple_files=True,
                                 key="concat_files",
                                )
