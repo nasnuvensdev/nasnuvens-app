@@ -58,12 +58,12 @@ if 'artist_dataframes' not in st.session_state:
     st.session_state['artist_dataframes'] = {}
 if 'matched_artists' not in st.session_state:
     st.session_state['matched_artists'] = {}
-if 'debug_mode' not in st.session_state:
-    st.session_state['debug_mode'] = False
 if 'mapping_df' not in st.session_state:
     st.session_state['mapping_df'] = None
 if 'processed_df' not in st.session_state:
     st.session_state['processed_df'] = None
+if 'unclassified_artists' not in st.session_state:
+    st.session_state['unclassified_artists'] = []
 
 #----------------------------------
 # Funções auxiliares
@@ -86,6 +86,7 @@ def reset_state():
     st.session_state['artist_dataframes'] = {}
     st.session_state['matched_artists'] = {}
     st.session_state['processed_df'] = None
+    st.session_state['unclassified_artists'] = []
     # Não resetamos o mapping_df para manter o mapeamento carregado
 
 def normalize_text(s):
@@ -127,7 +128,7 @@ def create_excel_with_formatted_numbers(df, filename):
     writer.close()
     return output.getvalue()
 
-def match_artist_from_mapping(artist_name, mapping_df, debug=False):
+def match_artist_from_mapping(artist_name, mapping_df):
     """
     Função para correspondência de artistas usando a planilha de mapeamento
     Retorna o valor da coluna Tag_Artista se encontrar correspondência ou None
@@ -139,8 +140,6 @@ def match_artist_from_mapping(artist_name, mapping_df, debug=False):
     exact_match = mapping_df[mapping_df['Artist'] == artist_name]
     if not exact_match.empty:
         tag = exact_match.iloc[0]['Tag_Artista']
-        if debug:
-            logger.info(f"Match exato: '{artist_name}' -> '{tag}'")
         return tag
     
     # Versão normalizada para correspondências parciais
@@ -159,8 +158,6 @@ def match_artist_from_mapping(artist_name, mapping_df, debug=False):
         
         # Verificar se há correspondência nos dois sentidos
         if normalized_artist in normalized_map_artist or normalized_map_artist in normalized_artist:
-            if debug:
-                logger.info(f"Match parcial: '{artist_name}' -> '{map_tag}' (via '{map_artist}')")
             return map_tag
     
     return None
@@ -201,13 +198,6 @@ def load_mapping_file():
         st.error(f"❌ Erro ao carregar arquivo de mapeamento: {str(e)}")
         return None
 
-def add_artist_to_mapping(artist_name, tag_artista, mapping_df):
-    """
-    Adiciona um novo artista ao DataFrame de mapeamento
-    """
-    new_row = pd.DataFrame([{"Artist": artist_name, "Tag_Artista": tag_artista}])
-    return pd.concat([mapping_df, new_row], ignore_index=True)
-
 def export_mapping_df(mapping_df):
     """
     Exporta o DataFrame de mapeamento para um arquivo Excel
@@ -220,12 +210,12 @@ def export_mapping_df(mapping_df):
     output.seek(0)
     return output.getvalue()
 
-def process_file(df, mapping_df, debug=False):
+def process_file(df, mapping_df):
     """
     Processa o arquivo aplicando o desconto e o mapeamento de artistas
     """
     if df is None or mapping_df is None:
-        return None, 0, 0
+        return None, 0, 0, 0
     
     # Valor original antes do desconto
     original_total = df['Net Dollars after Fees'].sum()
@@ -241,17 +231,50 @@ def process_file(df, mapping_df, debug=False):
     discounted_total = df['Net Dollars after Fees'].sum()
     total_withheld = original_total - discounted_total
     
+    # Tratar artistas em branco/null como "indefinido"
+    df['Artist'] = df['Artist'].fillna('indefinido (adicionar ao mapeamento)')
+    df['Artist'] = df['Artist'].replace('', 'adicionar ao mapeamento')
+    
     # Adicionar coluna para rastreamento de processamento
     df['Processed'] = False
     
     # Aplicar o mapeamento para cada artista
     df['Matched Group'] = df['Artist'].apply(
-        lambda x: match_artist_from_mapping(x, mapping_df, debug=debug)
+        lambda x: match_artist_from_mapping(x, mapping_df)
     )
     
     return df, original_total, discounted_total, total_withheld
 
-def generate_summary(df, fx_rate, debug=False):
+def get_unmatched_artists_with_values(df, fx_rate):
+    """
+    Identifica artistas não encontrados no mapeamento e seus valores
+    Retorna uma lista de dicionários com artista, valor em USD e BRL
+    """
+    if df is None:
+        return []
+    
+    # Identificar artistas não classificados (Matched Group é nulo)
+    unmatched_artists_df = df[df['Matched Group'].isna()]
+    unmatched_artists = []
+    
+    if not unmatched_artists_df.empty:
+        for artist in unmatched_artists_df['Artist'].unique():
+            artist_data = unmatched_artists_df[unmatched_artists_df['Artist'] == artist]
+            total_net_dollars = artist_data['Net Dollars after Fees'].sum()
+            
+            if total_net_dollars > 0:  # Só inclui se tiver valor positivo
+                unmatched_artists.append({
+                    'artist': artist,
+                    'net_dollars': round(total_net_dollars, 2),
+                    'brl': round(total_net_dollars * fx_rate, 2)
+                })
+    
+    # Ordenar artistas não encontrados por valor (maior para menor)
+    unmatched_artists.sort(key=lambda x: x['net_dollars'], reverse=True)
+    
+    return unmatched_artists
+
+def generate_summary(df, fx_rate):
     """
     Gera o resumo dos dados agrupados por artista
     """
@@ -280,6 +303,27 @@ def generate_summary(df, fx_rate, debug=False):
         artist_dfs[group_name] = group_data
         df.loc[group_data.index, 'Processed'] = True
     
+    # Agrupar artistas não encontrados no mapeamento (incluindo "indefinido")
+    df_without_group = df[df['Matched Group'].isna()]
+    if not df_without_group.empty:
+        # Agrupar por nome do artista original (incluindo "indefinido")
+        unmatched_grouped = df_without_group.groupby('Artist')
+        
+        for artist_name, artist_data in unmatched_grouped:
+            total_net_dollars = artist_data['Net Dollars after Fees'].sum()
+            total_brl = total_net_dollars * fx_rate
+            
+            # Adicionar diretamente no DataFrame principal de agrupamento
+            grouped_df = pd.concat([grouped_df, pd.DataFrame([{
+                "Artist": artist_name,
+                "Total Net Dollars": round(total_net_dollars, 2),
+                "FX Rate": fx_rate,
+                "Total BRL": round(total_brl, 2)
+            }])], ignore_index=True)
+            
+            artist_dfs[artist_name] = artist_data
+            df.loc[artist_data.index, 'Processed'] = True
+    
     # Ordenar por valor (do maior para o menor)
     grouped_df = grouped_df.sort_values(by="Total Net Dollars", ascending=False)
     
@@ -294,30 +338,10 @@ def generate_summary(df, fx_rate, debug=False):
     }])
     grouped_df = pd.concat([grouped_df, total_row], ignore_index=True)
 
-    # Identificar artistas não classificados (Matched Group é nulo)
-    unclassified_artists_df = df[df['Matched Group'].isna()]
+    # Agora os artistas não encontrados estão vazios pois foram incluídos no agrupamento principal
     unclassified_artists = []
-    
-    for artist in unclassified_artists_df['Artist'].unique():
-        artist_data = unclassified_artists_df[unclassified_artists_df['Artist'] == artist]
-        total_net_dollars = artist_data['Net Dollars after Fees'].sum()
 
-        if total_net_dollars > 0:  # Só inclui se tiver valor positivo
-            unclassified_artists.append({
-                'artist': artist,
-                'net_dollars': total_net_dollars,
-                'brl': total_net_dollars * fx_rate
-            })
-
-    # Ordenar artistas não classificados por valor (maior para menor)
-    unclassified_artists.sort(key=lambda x: x['net_dollars'], reverse=True)
-    
-    # Criar DataFrame de artistas não classificados para exportação
-    unclassified_df = unclassified_artists_to_dataframe(unclassified_artists)
-    if not unclassified_df.empty:
-        artist_dfs["_Artistas Não Classificados"] = unclassified_df
-
-    # Calcular o total geral considerando o withholding
+    # Calcular o total geral - agora deve bater perfeitamente
     total_net_dollars = df['Net Dollars after Fees'].sum()
     total_brl = total_net_dollars * fx_rate
     difference_net_dollars = total_net_dollars - total_net_dollars_df
@@ -335,18 +359,10 @@ def generate_summary(df, fx_rate, debug=False):
 #----------------------------------
 # Interface principal
 #----------------------------------
-# Opção de modo debug
-st.sidebar.title("Configurações")
-st.session_state['debug_mode'] = st.sidebar.checkbox("Modo Debug", value=st.session_state['debug_mode'])
 
 # Carregar arquivo de mapeamento (apenas uma vez)
 if st.session_state['mapping_df'] is None:
     st.session_state['mapping_df'] = load_mapping_file()
-    
-    # Em modo debug, mostrar informações sobre o mapeamento
-    if st.session_state['debug_mode'] and st.session_state['mapping_df'] is not None:
-        st.write(f"### Mapeamento carregado com {len(st.session_state['mapping_df'])} entradas")
-        st.dataframe(st.session_state['mapping_df'])
 
 # Upload do arquivo
 uploaded_file = st.file_uploader("Selecione o relatório Ingrooves", key="file_uploader")
@@ -366,8 +382,7 @@ if uploaded_file is not None and st.session_state['mapping_df'] is not None:
         # Processar o arquivo automaticamente
         processed_df, original_total, discounted_total, total_withheld = process_file(
             df, 
-            st.session_state['mapping_df'],
-            debug=st.session_state['debug_mode']
+            st.session_state['mapping_df']
         )
         
         # Armazenar os resultados no session_state
@@ -388,26 +403,6 @@ if uploaded_file is not None and st.session_state['mapping_df'] is not None:
         st.write(f'O total de withholding aplicado é **USD {format_br(total_withheld)}**')
         st.write(f':red[O valor Net menos withholding é **USD {format_br(discounted_total)}**]')
         
-        # Se modo debug, mostrar estatísticas adicionais
-        if st.session_state['debug_mode']:
-            st.write("### Artistas encontrados no relatório:")
-            artists_list = df['Artist'].dropna().unique().tolist()
-            artists_list.sort()
-            st.write(", ".join([f"'{a}'" for a in artists_list]))
-            
-            # Estatísticas de correspondência
-            matched_count = processed_df[processed_df['Matched Group'].notna()]['Artist'].nunique()
-            total_count = processed_df['Artist'].nunique()
-            match_rate = (matched_count / total_count) * 100 if total_count > 0 else 0
-            
-            st.write(f"### Estatísticas de correspondência:")
-            st.write(f"- Artistas correspondidos: {matched_count} de {total_count} ({match_rate:.1f}%)")
-            
-            # Distribuição por grupo
-            st.write("### Distribuição de artistas por grupo:")
-            group_counts = processed_df.groupby('Matched Group')['Net Dollars after Fees'].agg(['sum', 'count'])
-            st.dataframe(group_counts)
-        
         # Habilitar a entrada da taxa de câmbio
         st.session_state.show_fx_rate = True
         
@@ -416,58 +411,37 @@ if uploaded_file is not None and st.session_state['mapping_df'] is not None:
         import traceback
         st.error(traceback.format_exc())
 elif uploaded_file is not None and st.session_state['mapping_df'] is None:
-    st.warning("⚠️ Não foi possível carregar o arquivo de mapeamento. Verifique se o arquivo está no caminho correto: data/mapping-rubricas.xlsx")
+    st.warning("⚠️ Não foi possível carregar o arquivo de mapeamento. Verifique se o arquivo está no caminho correto: data/mapping/mapping-artistas-ingrooves.xlsx")
 
 # Área de taxa de câmbio e resumo
 if st.session_state.show_fx_rate:
     fx_rate = st.number_input("Adicione aqui a taxa de câmbio (FX rate)", value=0.0, format="%.4f")
     
-    # Opção extra para adicionar artistas manualmente ao mapeamento (modo debug)
-    if st.session_state['debug_mode'] and st.session_state['processed_df'] is not None:
-        with st.expander("Adicionar correspondência manual ao mapeamento"):
-            col1, col2 = st.columns(2)
-            with col1:
-                artist_original = st.selectbox("Selecione o artista", 
-                                   options=[""] + sorted(st.session_state['processed_df'][st.session_state['processed_df']['Matched Group'].isna()]['Artist'].unique().tolist()))
-            with col2:
-                # Opções de tag existentes ou nova tag
-                existing_tags = sorted(st.session_state['mapping_df']['Tag_Artista'].dropna().unique().tolist())
-                tag_options = ["", "[Nova Tag]"] + existing_tags
-                selected_tag_option = st.selectbox("Selecione ou crie uma tag", options=tag_options)
-                
-                if selected_tag_option == "[Nova Tag]":
-                    artist_tag = st.text_input("Digite a nova tag")
-                else:
-                    artist_tag = selected_tag_option
-                
-            if st.button("Adicionar ao mapeamento") and artist_original and artist_tag and artist_tag != "":
-                # Atualizar o DataFrame de mapeamento
-                mapping_df = add_artist_to_mapping(artist_original, artist_tag, st.session_state['mapping_df'])
-                st.session_state['mapping_df'] = mapping_df
-                
-                # Atualizar a correspondência no DataFrame principal
-                idx = st.session_state['processed_df']['Artist'] == artist_original
-                st.session_state['processed_df'].loc[idx, 'Matched Group'] = artist_tag
-                
-                st.success(f"Artista '{artist_original}' adicionado ao mapeamento com tag '{artist_tag}'")
-                
-                # Oferecer download do mapeamento atualizado
-                mapping_data = export_mapping_df(mapping_df)
-                if mapping_data:
-                    st.download_button(
-                        label="Baixar Mapeamento Atualizado",
-                        data=mapping_data,
-                        file_name="mapping-rubricas-atualizado.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
+    # Identificar e exibir artistas não encontrados (apenas para informação)
+    if st.session_state['processed_df'] is not None and fx_rate > 0:
+        unmatched_artists = get_unmatched_artists_with_values(st.session_state['processed_df'], fx_rate)
+        
+        if unmatched_artists:
+            st.markdown("### ⚠️ Artistas não encontrados no mapeamento")
+            st.info("Os seguintes artistas não foram encontrados na planilha de mapeamento e precisam ser adicionados manualmente:")
+            
+            # Calcular total dos não encontrados
+            total_unmatched_usd = sum(artist['net_dollars'] for artist in unmatched_artists)
+            total_unmatched_brl = sum(artist['brl'] for artist in unmatched_artists)
+            
+            st.markdown(f"**Total de artistas não encontrados:** {len(unmatched_artists)}")
+            st.markdown(f"**Valor total não classificado:** USD {format_br(total_unmatched_usd)} (BRL {format_br(total_unmatched_brl)})")
+            
+            # Exibir lista de artistas não encontrados
+            for i, artist_info in enumerate(unmatched_artists, 1):
+                st.markdown(f"{i}. **{artist_info['artist']}** - USD {format_br(artist_info['net_dollars'])} (BRL {format_br(artist_info['brl'])})")
     
     # Gerar resumo quando a taxa de câmbio for informada
     if fx_rate > 0 and st.session_state['processed_df'] is not None:
         # Gerar o resumo
         summary_df, artist_dfs, total_geral_values, unclassified_artists = generate_summary(
             st.session_state['processed_df'],
-            fx_rate,
-            debug=st.session_state['debug_mode']
+            fx_rate
         )
         
         # Armazenar no session_state
@@ -489,6 +463,22 @@ if st.session_state.show_summary and st.session_state.summary_df is not None:
     display_df['Total BRL'] = display_df['Total BRL'].apply(lambda x: f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
     st.dataframe(display_df)
 
+    # Mostrar artistas não encontrados após o dataframe principal
+    if 'unclassified_artists' in st.session_state and st.session_state['unclassified_artists']:
+        st.write("### ⚠️ Artistas não encontrados no mapeamento:")
+        
+        # Imprimir diretamente nome e valor de cada artista
+        for i, artist_info in enumerate(st.session_state['unclassified_artists'], 1):
+            st.write(f"{i}. **{artist_info['artist']}** - USD {format_br(artist_info['net_dollars'])} (BRL {format_br(artist_info['brl'])})")
+        
+        # Mostrar totais dos não encontrados
+        total_unclassified_usd = sum(artist['net_dollars'] for artist in st.session_state['unclassified_artists'])
+        total_unclassified_brl = sum(artist['brl'] for artist in st.session_state['unclassified_artists'])
+        
+        st.markdown(f"**Total de artistas não encontrados:** {len(st.session_state['unclassified_artists'])}")
+        st.markdown(f"**Total USD:** {format_br(total_unclassified_usd)}")
+        st.markdown(f"**Total BRL:** {format_br(total_unclassified_brl)}")
+
     # Botão de download das planilhas
     if st.session_state.artist_dataframes:
         zip_buffer = BytesIO()
@@ -503,7 +493,7 @@ if st.session_state.show_summary and st.session_state.summary_df is not None:
             if st.session_state.processed_data:
                 zip_file.writestr("Relatório_Processado_Completo.xlsx", st.session_state.processed_data)
                 
-            # Adicionar o mapeamento atualizado
+            # Adicionar o mapeamento original
             mapping_data = export_mapping_df(st.session_state['mapping_df'])
             if mapping_data:
                 zip_file.writestr("Mapeamento_Artistas.xlsx", mapping_data)
@@ -526,11 +516,8 @@ if st.session_state.show_summary and st.session_state.summary_df is not None:
         f":red[**Diferença BRL: BRL {format_br(st.session_state.total_geral_values['Difference BRL'])}**]"
     )
 
-    # Lista de artistas não classificados
+    # Opção para download da lista de não classificados (mantida aqui também)
     if 'unclassified_artists' in st.session_state and st.session_state['unclassified_artists']:
-        st.markdown("### Artistas não classificados ⚠️")
-        
-        # Opção para download da lista de não classificados
         unclassified_df = unclassified_artists_to_dataframe(st.session_state['unclassified_artists'])
         if not unclassified_df.empty:
             excel_data = create_excel_with_formatted_numbers(unclassified_df, "artistas_nao_classificados.xlsx")
@@ -540,34 +527,3 @@ if st.session_state.show_summary and st.session_state.summary_df is not None:
                 file_name="artistas_nao_classificados.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
-            
-        for artist_info in st.session_state['unclassified_artists']:
-            st.markdown(
-                f"- {artist_info['artist']}: USD {format_br(artist_info['net_dollars'])} "
-                f"(BRL {format_br(artist_info['brl'])})"
-            )
-            
-        # Sugestão para adicionar todos os artistas não classificados ao mapeamento (modo debug)
-        if st.session_state['debug_mode'] and st.button("Adicionar todos os não classificados ao mapeamento"):
-            added_count = 0
-            for artist_info in st.session_state['unclassified_artists']:
-                # Adiciona cada artista como sua própria tag (1:1)
-                artist_name = artist_info['artist']
-                st.session_state['mapping_df'] = add_artist_to_mapping(
-                    artist_name, 
-                    artist_name, 
-                    st.session_state['mapping_df']
-                )
-                added_count += 1
-                
-            st.success(f"✅ {added_count} artistas adicionados ao mapeamento como suas próprias tags.")
-            
-            # Oferecer download do mapeamento atualizado
-            mapping_data = export_mapping_df(st.session_state['mapping_df'])
-            if mapping_data:
-                st.download_button(
-                    label="Baixar Mapeamento Atualizado com Todos os Artistas",
-                    data=mapping_data,
-                    file_name="mapping-rubricas-completo.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
