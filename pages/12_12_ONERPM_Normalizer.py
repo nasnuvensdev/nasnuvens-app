@@ -36,7 +36,8 @@ estrutura_final = [
     "Gross BRL",   # Nova coluna calculada
     "Net BRL",
     "Payer Name",  # Nova coluna
-    "Origem"  # Nova coluna para identificar planilha de origem
+    "Origem",  # Nova coluna para identificar planilha de origem
+    "Nome Arquivo"  # Nova coluna com nome do arquivo original
 ]
 
 mapeamento_masters = {
@@ -47,28 +48,6 @@ mapeamento_masters = {
     'UPC': 'UPC',
     'ISRC': 'ISRC',
     'Product Type': 'Product Type',
-    'Store': 'Store',
-    'Territory': 'Territory',
-    'Sale Type': 'Sale Type',
-    'Transaction Month': 'Transaction Month',
-    'Accounted Date': 'Accounted Date',
-    'Original Currency': 'Original Currency',
-    'Gross (Original Currency)': 'Gross (Original Currency)',
-    'Exchange Rate': 'Exchange Rate',
-    'Currency': 'Currency',
-    'Gross': 'Gross',
-    'Quantity': 'Quantity',
-    'Average Unit Gross': 'Average Unit Gross',
-    '% Share': '% Share',
-    'Fees': 'Fees',
-    'Net': 'Net'
-}
-
-mapeamento_youtube_channels = {
-    'Video Title': 'Track Title',
-    'Channel Name': 'Artists',
-    'Channel ID': 'UPC',
-    'Video ID': 'ISRC',
     'Store': 'Store',
     'Territory': 'Territory',
     'Sale Type': 'Sale Type',
@@ -113,7 +92,7 @@ def identificar_moedas(dfs: Dict[str, pd.DataFrame]) -> Set[str]:
             moedas.update(moedas_planilha)
     return moedas
 
-def processar_planilha(df: pd.DataFrame, mapeamento: Dict[str, str], nome_planilha: str) -> pd.DataFrame:
+def processar_planilha(df: pd.DataFrame, mapeamento: Dict[str, str], nome_planilha: str, nome_arquivo: str = None) -> pd.DataFrame:
     """Processa uma planilha aplicando o mapeamento de colunas"""
     # Filtra apenas "In" para Shares In & Out
     if nome_planilha == "Shares In & Out" and 'Share Type' in df.columns:
@@ -122,12 +101,14 @@ def processar_planilha(df: pd.DataFrame, mapeamento: Dict[str, str], nome_planil
     # Renomeia as colunas conforme o mapeamento
     df_processado = df.rename(columns=mapeamento)
     
-    # Adiciona "Video" na coluna Product Type para YouTube Channels
-    if nome_planilha == "Youtube Channels":
-        df_processado['Product Type'] = 'Video'
-    
     # Adiciona a coluna "Origem" com o nome da planilha
     df_processado['Origem'] = nome_planilha
+    
+    # Adiciona a coluna "Nome Arquivo" com o nome do arquivo original
+    if nome_arquivo:
+        df_processado['Nome Arquivo'] = nome_arquivo
+    else:
+        df_processado['Nome Arquivo'] = None
     
     # Garante que todas as colunas da estrutura final existam
     for coluna in estrutura_final:
@@ -138,6 +119,47 @@ def processar_planilha(df: pd.DataFrame, mapeamento: Dict[str, str], nome_planil
     df_processado = df_processado[estrutura_final]
     
     return df_processado
+
+def processar_youtube_channels(df: pd.DataFrame, taxas_cambio: Dict[str, float]) -> pd.DataFrame:
+    """Processa a planilha Youtube Channels mantendo estrutura original e convertendo valores"""
+    df_youtube = df.copy()
+    
+    # Adiciona colunas de conversão para BRL se tiverem as colunas necessárias
+    if 'Gross' in df_youtube.columns and 'Currency' in df_youtube.columns:
+        def converter_gross_para_brl(row):
+            if pd.isna(row['Gross']) or pd.isna(row['Currency']):
+                return None
+            
+            moeda = row['Currency']
+            valor_gross = row['Gross']
+            
+            if moeda == 'BRL':
+                return valor_gross
+            elif moeda in taxas_cambio:
+                return valor_gross * taxas_cambio[moeda]
+            else:
+                return None
+        
+        df_youtube['Gross BRL'] = df_youtube.apply(converter_gross_para_brl, axis=1)
+    
+    if 'Net' in df_youtube.columns and 'Currency' in df_youtube.columns:
+        def converter_net_para_brl(row):
+            if pd.isna(row['Net']) or pd.isna(row['Currency']):
+                return None
+            
+            moeda = row['Currency']
+            valor_net = row['Net']
+            
+            if moeda == 'BRL':
+                return valor_net
+            elif moeda in taxas_cambio:
+                return valor_net * taxas_cambio[moeda]
+            else:
+                return None
+        
+        df_youtube['Net BRL'] = df_youtube.apply(converter_net_para_brl, axis=1)
+    
+    return df_youtube
 
 def processar_shares_out(df: pd.DataFrame, taxas_cambio: Dict[str, float]) -> pd.DataFrame:
     """Processa os dados de Share Out separadamente"""
@@ -167,7 +189,7 @@ def processar_shares_out(df: pd.DataFrame, taxas_cambio: Dict[str, float]) -> pd
     
     df_out['Net BRL'] = df_out.apply(converter_para_brl, axis=1)
     
-    # Seleciona apenas as colunas necessárias para análise
+    # Seleciona e reordena as colunas conforme solicitado
     colunas_share_out = ['Receiver Name', 'Net', 'Currency', 'Net BRL', 'Artists', 'Title']
     colunas_existentes = [col for col in colunas_share_out if col in df_out.columns]
     
@@ -253,11 +275,22 @@ def criar_resumo_share_out(df_share_out: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame()
     
     resumo = df_share_out.groupby('Receiver Name').agg({
-        'Net BRL': 'sum',
-        'Net': 'sum'
+        'Net BRL': 'sum'
     }).reset_index()
     
     resumo = resumo.sort_values('Net BRL', ascending=False)
+    
+    # Adiciona linha de total
+    total_net_brl = resumo['Net BRL'].sum()
+    
+    resumo = pd.concat([
+        resumo,
+        pd.DataFrame([{
+            'Receiver Name': 'TOTAL',
+            'Net BRL': total_net_brl
+        }])
+    ], ignore_index=True)
+    
     return resumo
 
 # Interface Streamlit
@@ -290,7 +323,6 @@ if uploaded_file is not None:
             for aba in abas_necessarias:
                 if aba in abas_existentes:
                     dfs[aba] = pd.read_excel(uploaded_file, sheet_name=aba)
-                    #st.success(f"✓ {aba}: {len(dfs[aba])} registros carregados")
                 else:
                     st.warning(f"⚠️ Aba '{aba}' não encontrada no arquivo")
         st.divider()
@@ -335,25 +367,29 @@ if uploaded_file is not None:
             # Botão para processar
             if st.button("Criar Planilha", type="primary"):
                 with st.spinner("Processando dados..."):
+                    # Extrai nome do arquivo com e sem extensão
+                    nome_arquivo_completo = uploaded_file.name if uploaded_file.name else "arquivo.xlsx"
+                    nome_arquivo_sem_extensao = uploaded_file.name.rsplit('.', 1)[0] if uploaded_file.name else "arquivo"
+                    
                     dfs_processados = []
                     df_share_out = pd.DataFrame()
+                    df_youtube_processado = pd.DataFrame()
                     
                     # Processa cada planilha
                     if "Masters" in dfs:
-                        df_masters = processar_planilha(dfs["Masters"], mapeamento_masters, "Masters")
+                        df_masters = processar_planilha(dfs["Masters"], mapeamento_masters, "Masters", nome_arquivo_completo)
                         df_masters = calcular_net_brl(df_masters, taxas_cambio)
                         dfs_processados.append(df_masters)
                         st.success(f"✓ Masters processado: {len(df_masters)} registros")
                     
                     if "Youtube Channels" in dfs:
-                        df_youtube = processar_planilha(dfs["Youtube Channels"], mapeamento_youtube_channels, "Youtube Channels")
-                        df_youtube = calcular_net_brl(df_youtube, taxas_cambio)
-                        dfs_processados.append(df_youtube)
-                        st.success(f"✓ Youtube Channels processado: {len(df_youtube)} registros")
+                        # Processa Youtube Channels separadamente mantendo estrutura original
+                        df_youtube_processado = processar_youtube_channels(dfs["Youtube Channels"], taxas_cambio)
+                        st.success(f"✓ Youtube Channels processado: {len(df_youtube_processado)} registros")
                     
                     if "Shares In & Out" in dfs:
                         # Processa Share In (para concatenar)
-                        df_shares_in = processar_planilha(dfs["Shares In & Out"], mapeamento_shares_in_out, "Shares In & Out")
+                        df_shares_in = processar_planilha(dfs["Shares In & Out"], mapeamento_shares_in_out, "Shares In & Out", nome_arquivo_completo)
                         df_shares_in = calcular_net_brl(df_shares_in, taxas_cambio)
                         dfs_processados.append(df_shares_in)
                         st.success(f"✓ Shares In processado: {len(df_shares_in)} registros")
@@ -363,17 +399,19 @@ if uploaded_file is not None:
                         if not df_share_out.empty:
                             st.success(f"✓ Shares Out processado: {len(df_share_out)} registros para análise")
                     
-                    # Concatena todas as planilhas
+                    # Concatena Masters e Shares In
                     if dfs_processados:
                         df_final = pd.concat(dfs_processados, ignore_index=True)
                         
                         # Armazena no session_state
                         st.session_state['df_final'] = df_final
+                        st.session_state['df_youtube_processado'] = df_youtube_processado
                         st.session_state['df_share_out'] = df_share_out
                         st.session_state['taxas_cambio'] = taxas_cambio
+                        st.session_state['nome_arquivo_sem_extensao'] = nome_arquivo_sem_extensao
                         st.session_state['processamento_concluido'] = True
                         
-                        st.success(f"🎉 Processamento concluído! Total de registros: {len(df_final)}")
+                        st.success(f"🎉 Processamento concluído! Total de registros Masters + Shares In: {len(df_final)}")
                         st.rerun()  # Atualiza a página para mostrar os resultados
     except Exception as e:
         st.error(f"Ocorreu um erro ao processar o arquivo: {e}")
@@ -381,19 +419,14 @@ if uploaded_file is not None:
 # Exibe resultados somente após processamento
 if 'df_final' in st.session_state and 'processamento_concluido' in st.session_state:
     df_final = st.session_state['df_final']
+    df_youtube_processado = st.session_state.get('df_youtube_processado', pd.DataFrame())
     df_share_out = st.session_state.get('df_share_out', pd.DataFrame())
     taxas_cambio = st.session_state['taxas_cambio']
+    nome_arquivo_original = st.session_state.get('nome_arquivo_sem_extensao', 'arquivo')
     
     st.divider()
     
-    st.subheader("📊 Prévia dos Dados Processados")
-    
-    # Mostra prévia
-    st.dataframe(df_final.head(10), use_container_width=True, hide_index=True)
-    #st.info(f"Mostrando 10 primeiros registros de {len(df_final)} total")
-    st.divider()
     # Resumo financeiro por origem
-    
     st.subheader("💲Resumo Financeiro por Origem")
     resumo_origem = criar_resumo_financeiro_por_origem(df_final)
     
@@ -405,13 +438,17 @@ if 'df_final' in st.session_state and 'processamento_concluido' in st.session_st
             with col:
                 st.metric(
                     row['Origem'], 
-                    f"R$ {row['Total Net BRL']:,.2f}",
-                    f"{row['Registros']:,} registros"
+                    f"R$ {row['Total Net BRL']:,.2f}"
                 )
     
     # Total geral
     total_brl = resumo_origem[resumo_origem['Origem'] == 'TOTAL']['Total Net BRL'].iloc[0]
     st.metric("**💵 Total Geral em BRL**", f"R$ {total_brl:,.2f}")
+    
+    # Adiciona resumo do Youtube Channels se existir
+    if not df_youtube_processado.empty and 'Net BRL' in df_youtube_processado.columns:
+        total_youtube_brl = df_youtube_processado['Net BRL'].sum()
+        st.metric("📺 Youtube Channels Net BRL", f"R$ {total_youtube_brl:,.2f}")
     
     st.divider()
 
@@ -421,47 +458,73 @@ if 'df_final' in st.session_state and 'processamento_concluido' in st.session_st
         resumo_share_out = criar_resumo_share_out(df_share_out)
         
         if not resumo_share_out.empty:
-            st.dataframe(resumo_share_out, use_container_width=True, hide_index=True)
+            # Aplica styling para destacar a linha TOTAL e formatar valores
+            def highlight_total(row):
+                if row['Receiver Name'] == 'TOTAL':
+                    return ['background-color: #f0f0f0; font-weight: bold'] * len(row)
+                return [''] * len(row)
             
-            # Total de Share Out
-            total_share_out = resumo_share_out['Net BRL'].sum()
-            st.metric("💸 Total Share Out em BRL", f"R$ {total_share_out:,.2f}")
+            def format_numbers(val):
+                if isinstance(val, (int, float)) and not pd.isna(val):
+                    return f"{val:.2f}"
+                return val
+            
+            # Exibe o dataframe com styling e formatação
+            styled_df = resumo_share_out.style.apply(highlight_total, axis=1).format({
+                'Net BRL': lambda x: f"{x:.2f}" if pd.notna(x) else x
+            })
+            st.dataframe(styled_df, use_container_width=True, hide_index=True)
         else:
             st.info("Nenhum dado de Share Out encontrado")
     
     st.divider()
     
-    # Botão de download
-    st.subheader("📥 Download da Planilha Final")
+    # Botões de download
+    st.subheader("📥 Download das Planilhas Finais")
     
-    # Prepara arquivo para download
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        # Calcula Gross BRL apenas para o download
-        df_final_download = calcular_gross_brl(df_final, taxas_cambio)
-        
-        # Planilha principal
-        df_final_download.to_excel(writer, sheet_name='Dados Processados', index=False)
-        
-        # Planilha de Share Out (se existir)
-        if not df_share_out.empty:
-            df_share_out.to_excel(writer, sheet_name='Share Out Analysis', index=False)
-            resumo_share_out = criar_resumo_share_out(df_share_out)
-            if not resumo_share_out.empty:
-                resumo_share_out.to_excel(writer, sheet_name='Resumo Share Out', index=False)
+    col1, col2 = st.columns(2)
     
-    st.download_button(
-        label="📄 Baixar Planilha Processada",
-        data=output.getvalue(),
-        file_name="onerpm_royalties_processados.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+    # Arquivo 1: Masters + Shares In
+    with col1:
+        st.write("**📊 Masters + Shares In**")
+        output1 = io.BytesIO()
+        with pd.ExcelWriter(output1, engine='openpyxl') as writer:
+            # Calcula Gross BRL para a planilha Masters + Shares In
+            df_final_download = calcular_gross_brl(df_final, taxas_cambio)
+            df_final_download.to_excel(writer, sheet_name='Dados_Processados', index=False)
+            
+            # Adiciona Share Out se existir
+            if not df_share_out.empty:
+                df_share_out.to_excel(writer, sheet_name='Share_Out_Analysis', index=False)
+                resumo_share_out = criar_resumo_share_out(df_share_out)
+                if not resumo_share_out.empty:
+                    resumo_share_out.to_excel(writer, sheet_name='Resumo_Share_Out', index=False)
+        
+        st.download_button(
+            label="📄 Baixar Masters + Shares In",
+            data=output1.getvalue(),
+            file_name=f"masters_shares_in_{nome_arquivo_original}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="download_masters"
+        )
+    
+    # Arquivo 2: Youtube Channels
+    with col2:
+        st.write("**📺 Youtube Channels**")
+        if not df_youtube_processado.empty:
+            output2 = io.BytesIO()
+            with pd.ExcelWriter(output2, engine='openpyxl') as writer:
+                df_youtube_processado.to_excel(writer, sheet_name='Youtube_Channels', index=False)
+            
+            st.download_button(
+                label="📄 Baixar Youtube Channels",
+                data=output2.getvalue(),
+                file_name=f"youtube_channels_{nome_arquivo_original}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="download_youtube"
+            )
+        else:
+            st.info("Nenhum dado do Youtube Channels para download")
 
 else:
     pass
-    #st.info("👆 Faça upload de um arquivo Excel para começar o processamento")
-
-# Footer
-#     st.divider()
-
-# st.markdown("*Desenvolvido para processamento de royalties OneRPM*")
