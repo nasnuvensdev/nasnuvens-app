@@ -124,14 +124,20 @@ def processar_youtube_channels(df: pd.DataFrame, taxas_cambio: Dict[str, float])
     """Processa a planilha Youtube Channels mantendo estrutura original e convertendo valores"""
     df_youtube = df.copy()
     
+    # Renomeia as colunas originais primeiro
+    if 'Gross' in df_youtube.columns:
+        df_youtube = df_youtube.rename(columns={'Gross': 'Onerpm Gross'})
+    if 'Net' in df_youtube.columns:
+        df_youtube = df_youtube.rename(columns={'Net': 'Onerpm Net'})
+    
     # Adiciona colunas de conversão para BRL se tiverem as colunas necessárias
-    if 'Gross' in df_youtube.columns and 'Currency' in df_youtube.columns:
+    if 'Onerpm Gross' in df_youtube.columns and 'Currency' in df_youtube.columns:
         def converter_gross_para_brl(row):
-            if pd.isna(row['Gross']) or pd.isna(row['Currency']):
+            if pd.isna(row['Onerpm Gross']) or pd.isna(row['Currency']):
                 return None
             
             moeda = row['Currency']
-            valor_gross = row['Gross']
+            valor_gross = row['Onerpm Gross']
             
             if moeda == 'BRL':
                 return valor_gross
@@ -140,15 +146,15 @@ def processar_youtube_channels(df: pd.DataFrame, taxas_cambio: Dict[str, float])
             else:
                 return None
         
-        df_youtube['Gross BRL'] = df_youtube.apply(converter_gross_para_brl, axis=1)
+        df_youtube['Gross'] = df_youtube.apply(converter_gross_para_brl, axis=1)
     
-    if 'Net' in df_youtube.columns and 'Currency' in df_youtube.columns:
+    if 'Onerpm Net' in df_youtube.columns and 'Currency' in df_youtube.columns:
         def converter_net_para_brl(row):
-            if pd.isna(row['Net']) or pd.isna(row['Currency']):
+            if pd.isna(row['Onerpm Net']) or pd.isna(row['Currency']):
                 return None
             
             moeda = row['Currency']
-            valor_net = row['Net']
+            valor_net = row['Onerpm Net']
             
             if moeda == 'BRL':
                 return valor_net
@@ -157,7 +163,7 @@ def processar_youtube_channels(df: pd.DataFrame, taxas_cambio: Dict[str, float])
             else:
                 return None
         
-        df_youtube['Net BRL'] = df_youtube.apply(converter_net_para_brl, axis=1)
+        df_youtube['Net'] = df_youtube.apply(converter_net_para_brl, axis=1)
     
     return df_youtube
 
@@ -236,6 +242,21 @@ def calcular_net_brl(df: pd.DataFrame, taxas_cambio: Dict[str, float]) -> pd.Dat
     
     df['Net BRL'] = df.apply(converter_para_brl, axis=1)
     return df
+
+def preparar_df_para_download(df: pd.DataFrame, taxas_cambio: Dict[str, float]) -> pd.DataFrame:
+    """Prepara o DataFrame final para download com as colunas renomeadas"""
+    # Primeiro calcula Gross BRL
+    df_download = calcular_gross_brl(df, taxas_cambio)
+    
+    # Renomeia as colunas conforme solicitado
+    df_download = df_download.rename(columns={
+        'Gross': 'Onerpm Gross',
+        'Net': 'Onerpm Net',
+        'Gross BRL': 'Gross',
+        'Net BRL': 'Net'
+    })
+    
+    return df_download
 
 def criar_resumo_financeiro_por_origem(df_final: pd.DataFrame) -> pd.DataFrame:
     """Cria um resumo financeiro por origem das planilhas"""
@@ -440,14 +461,14 @@ if 'df_final' in st.session_state and 'processamento_concluido' in st.session_st
                     row['Origem'], 
                     f"R$ {row['Total Net BRL']:,.2f}"
                 )
-    
+
     # Total geral
     total_brl = resumo_origem[resumo_origem['Origem'] == 'TOTAL']['Total Net BRL'].iloc[0]
-    st.metric("**💵 Total Geral em BRL**", f"R$ {total_brl:,.2f}")
-    
+    st.metric("**💵 Total Masters + Share-In em BRL**", f"R$ {total_brl:,.2f}")
+         
     # Adiciona resumo do Youtube Channels se existir
-    if not df_youtube_processado.empty and 'Net BRL' in df_youtube_processado.columns:
-        total_youtube_brl = df_youtube_processado['Net BRL'].sum()
+    if not df_youtube_processado.empty and 'Net' in df_youtube_processado.columns:
+        total_youtube_brl = df_youtube_processado['Net'].sum()
         st.metric("📺 Youtube Channels Net BRL", f"R$ {total_youtube_brl:,.2f}")
     
     st.divider()
@@ -489,8 +510,8 @@ if 'df_final' in st.session_state and 'processamento_concluido' in st.session_st
         st.write("**📊 Masters + Shares In**")
         output1 = io.BytesIO()
         with pd.ExcelWriter(output1, engine='openpyxl') as writer:
-            # Calcula Gross BRL para a planilha Masters + Shares In
-            df_final_download = calcular_gross_brl(df_final, taxas_cambio)
+            # Prepara o DataFrame final para download com colunas renomeadas
+            df_final_download = preparar_df_para_download(df_final, taxas_cambio)
             df_final_download.to_excel(writer, sheet_name='Dados_Processados', index=False)
             
             # Adiciona Share Out se existir
