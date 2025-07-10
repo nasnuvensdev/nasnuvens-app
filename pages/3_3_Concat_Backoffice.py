@@ -109,6 +109,14 @@ if uploaded_files:
                 st.dataframe(df_results)
 
                 st.write(f'Total: **{total_royalties_sum}**')
+
+                desconto_r3 = (total_royalties_sum * 0.025).round(2)
+
+                st.write(f'Desconto R3 (2,5%): **{desconto_r3}**')
+
+                st.write(f'Total com desconto: **{total_royalties_sum-desconto_r3}**')
+
+
                 
             else:
                 st.warning("Nenhum arquivo válido para totalização encontrado.")

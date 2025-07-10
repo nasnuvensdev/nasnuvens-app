@@ -362,6 +362,7 @@ if uploaded_file is not None:
                 'USD': 5.0,
                 'EUR': 5.5,
                 'GBP': 6.0,
+                'RUB': 0.06,
                 'CAD': 3.8,
                 'AUD': 3.3,
                 'JPY': 0.035
@@ -386,7 +387,7 @@ if uploaded_file is not None:
                     taxas_cambio[moeda] = 1.0
             
             # Botão para processar
-            if st.button("Criar Planilha", type="primary"):
+            if st.button("Processar e Gerar Planilhas", type="primary"):
                 with st.spinner("Processando dados..."):
                     # Extrai nome do arquivo com e sem extensão
                     nome_arquivo_completo = uploaded_file.name if uploaded_file.name else "arquivo.xlsx"
