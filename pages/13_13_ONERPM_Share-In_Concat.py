@@ -343,6 +343,23 @@ if arquivos_enviados:
                     moedas_df = df['Currency'].dropna().unique()
                     moedas_encontradas.update(moedas_df)
             
+            # Verifica se existe Youtube Channels em algum arquivo
+            youtube_data = {}
+            for nome, dados in dfs_carregados.items():
+                arquivo = dados['arquivo']
+                excel_file = pd.ExcelFile(arquivo)
+                if "Youtube Channels" in excel_file.sheet_names:
+                    df_youtube = pd.read_excel(arquivo, sheet_name="Youtube Channels")
+                    youtube_data[nome] = {
+                        'df': df_youtube,
+                        'arquivo': arquivo
+                    }
+                    st.info(f"📺 Youtube Channels encontrado em {nome}")
+                    # Adiciona moedas do Youtube Channels
+                    if 'Currency' in df_youtube.columns:
+                        moedas_youtube = df_youtube['Currency'].dropna().unique()
+                        moedas_encontradas.update(moedas_youtube)
+            
             # Configuração de taxas de câmbio
             st.subheader("💱 Configuração de Taxas de Câmbio")
             st.write(f"Moedas encontradas: {', '.join(sorted(moedas_encontradas))}")
@@ -384,6 +401,7 @@ if arquivos_enviados:
             if st.button("Processar Dados", type="primary"):
                 with st.spinner("Processando dados..."):
                     dfs_processados = []
+                    df_youtube_processado = pd.DataFrame()
                     
                     # Processa cada arquivo
                     for nome, dados in dfs_carregados.items():
@@ -411,16 +429,32 @@ if arquivos_enviados:
                         else:
                             st.warning(f"⚠️ Nenhum dado válido encontrado em {nome}")
                     
+                    # Processa Youtube Channels se existir
+                    if youtube_data:
+                        youtube_dfs = []
+                        for nome, dados in youtube_data.items():
+                            df_youtube = dados['df']
+                            df_youtube_proc = processar_youtube_channels(df_youtube, taxas_cambio)
+                            if not df_youtube_proc.empty:
+                                youtube_dfs.append(df_youtube_proc)
+                                st.success(f"✓ Youtube Channels de {nome} processado: {len(df_youtube_proc)} registros")
+                        
+                        if youtube_dfs:
+                            df_youtube_processado = pd.concat(youtube_dfs, ignore_index=True)
+                    
                     # Concatena todos os DataFrames
                     if dfs_processados:
                         df_final = pd.concat(dfs_processados, ignore_index=True)
                         
                         # Armazena no session_state
                         st.session_state['df_final'] = df_final
+                        st.session_state['df_youtube_processado'] = df_youtube_processado
                         st.session_state['taxas_cambio'] = taxas_cambio
                         st.session_state['processamento_concluido'] = True
                         
                         st.success(f"🎉 Processamento concluído! Total de registros: {len(df_final)}")
+                        if not df_youtube_processado.empty:
+                            st.success(f"📺 Youtube Channels processado: {len(df_youtube_processado)} registros")
                         st.rerun()
                     else:
                         st.error("❌ Nenhum dado válido foi processado")
@@ -431,6 +465,7 @@ if arquivos_enviados:
 # Exibe resultados somente após processamento
 if 'df_final' in st.session_state and 'processamento_concluido' in st.session_state:
     df_final = st.session_state['df_final']
+    df_youtube_processado = st.session_state.get('df_youtube_processado', pd.DataFrame())
     taxas_cambio = st.session_state['taxas_cambio']
     
     st.divider()
@@ -459,6 +494,11 @@ if 'df_final' in st.session_state and 'processamento_concluido' in st.session_st
             total_registros = total_row['Registros'].iloc[0]
             st.metric("**💵 Total Geral**", f"R$ {total_brl:,.2f}", f"{total_registros} registros")
     
+    # Adiciona resumo do Youtube Channels se existir
+    if not df_youtube_processado.empty and 'Net' in df_youtube_processado.columns:
+        total_youtube_brl = df_youtube_processado['Net'].sum()
+        st.metric("📺 Youtube Channels Net BRL", f"R$ {total_youtube_brl:,.2f}")
+    
     st.divider()
     
     # Visualização dos dados processados
@@ -482,25 +522,48 @@ if 'df_final' in st.session_state and 'processamento_concluido' in st.session_st
     st.divider()
     
     # Botão de download
-    st.subheader("📥 Download da Planilha Final")
+    st.subheader("📥 Download das Planilhas Finais")
     
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        # Prepara o DataFrame final para download
-        df_final_download = preparar_df_para_download(df_final, taxas_cambio)
-        df_final_download.to_excel(writer, sheet_name='Costa_Gold_Processado', index=False)
+    col1, col2 = st.columns(2)
+    
+    # Arquivo 1: Dados Processados (Masters + Shares In)
+    with col1:
+        st.write("**📊 Dados Processados**")
+        output1 = io.BytesIO()
+        with pd.ExcelWriter(output1, engine='openpyxl') as writer:
+            # Prepara o DataFrame final para download
+            df_final_download = preparar_df_para_download(df_final, taxas_cambio)
+            df_final_download.to_excel(writer, sheet_name='Costa_Gold_Processado', index=False)
+            
+            # Adiciona aba de resumo
+            if not resumo_origem.empty:
+                resumo_origem.to_excel(writer, sheet_name='Resumo_Financeiro', index=False)
         
-        # Adiciona aba de resumo
-        if not resumo_origem.empty:
-            resumo_origem.to_excel(writer, sheet_name='Resumo_Financeiro', index=False)
+        st.download_button(
+            label="📄 Baixar Dados Processados",
+            data=output1.getvalue(),
+            file_name="costa_gold_processado.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="download_final"
+        )
     
-    st.download_button(
-        label="📄 Baixar Planilha Processada",
-        data=output.getvalue(),
-        file_name="costa_gold_processado.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        key="download_final"
-    )
+    # Arquivo 2: Youtube Channels
+    with col2:
+        st.write("**📺 Youtube Channels**")
+        if not df_youtube_processado.empty:
+            output2 = io.BytesIO()
+            with pd.ExcelWriter(output2, engine='openpyxl') as writer:
+                df_youtube_processado.to_excel(writer, sheet_name='Youtube_Channels', index=False)
+            
+            st.download_button(
+                label="📄 Baixar Youtube Channels",
+                data=output2.getvalue(),
+                file_name="youtube_channels_costa_gold.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="download_youtube"
+            )
+        else:
+            st.info("Nenhum dado do Youtube Channels para download")
 
 # Instruções de uso
 if not arquivos_enviados:
