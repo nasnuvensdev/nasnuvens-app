@@ -566,7 +566,7 @@ if arquivos_enviados:
             for i, moeda in enumerate(sorted(moedas_encontradas)):
                 if moeda != 'BRL':  # BRL não precisa de conversão
                     col = [col1, col2, col3][i % 3]
-                    with col:
+                    with col1:
                         valor_padrao = valores_padrao.get(moeda, 1.0)
                         taxa = st.number_input(
                             f"Taxa {moeda} → BRL:",
