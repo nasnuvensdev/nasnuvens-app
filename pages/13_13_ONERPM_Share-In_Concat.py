@@ -354,7 +354,7 @@ if arquivos_enviados:
                         'df': df_youtube,
                         'arquivo': arquivo
                     }
-                    st.info(f"📺 Youtube Channels encontrado em {nome}")
+                    #st.info(f"📺 Youtube Channels encontrado em {nome}")
                     # Adiciona moedas do Youtube Channels
                     if 'Currency' in df_youtube.columns:
                         moedas_youtube = df_youtube['Currency'].dropna().unique()
@@ -564,29 +564,3 @@ if 'df_final' in st.session_state and 'processamento_concluido' in st.session_st
             )
         else:
             st.info("Nenhum dado do Youtube Channels para download")
-
-# Instruções de uso
-if not arquivos_enviados:
-    st.divider()
-    st.subheader("📖 Instruções de Uso")
-    st.write("""
-    1. **Faça upload dos arquivos** nas seções correspondentes:
-       - **Nas Nuvens**: O sistema filtrará automaticamente por Payer Name = "Costa Gold" ou "Costa Gold by DMC"
-       - **Costa Gold**: Dados diretos do Costa Gold
-       - **Costa Gold by DMC**: Dados diretos do Costa Gold by DMC
-    
-    2. **Configure as taxas de câmbio** para conversão para BRL
-    
-    3. **Clique em "Processar Dados"** para:
-       - Filtrar por Share Type = "In" em todas as planilhas
-       - Aplicar filtros específicos conforme a origem
-       - Mapear para formato Master_Share-In
-       - Concatenar todos os dados
-       - Calcular valores em BRL
-    
-    4. **Visualize o resumo financeiro** por origem
-    
-    5. **Faça download** da planilha final processada
-    
-    **Nota**: Pelo menos um arquivo deve ser enviado para iniciar o processamento.
-    """)
