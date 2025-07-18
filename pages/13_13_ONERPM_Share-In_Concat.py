@@ -470,39 +470,39 @@ if 'df_final' in st.session_state and 'processamento_concluido' in st.session_st
     
     st.divider()
     
-    # Resumo financeiro por origem
-    st.subheader("💲 Resumo Financeiro por Origem")
+    # # Resumo financeiro por origem
+    # st.subheader("💲 Resumo Financeiro por Origem")
     resumo_origem = criar_resumo_financeiro_por_origem(df_final)
     
-    if not resumo_origem.empty:
-        # Exibe métricas em colunas
-        origens = resumo_origem[resumo_origem['Origem'] != 'TOTAL']
-        if not origens.empty:
-            cols = st.columns(len(origens))
-            for i, (_, row) in enumerate(origens.iterrows()):
-                with cols[i]:
-                    st.metric(
-                        row['Origem'], 
-                        f"R$ {row['Total Net BRL']:,.2f}",
-                        f"{row['Registros']} registros"
-                    )
+    # if not resumo_origem.empty:
+    #     # Exibe métricas em colunas
+    #     origens = resumo_origem[resumo_origem['Origem'] != 'TOTAL']
+    #     if not origens.empty:
+    #         cols = st.columns(len(origens))
+    #         for i, (_, row) in enumerate(origens.iterrows()):
+    #             with cols[i]:
+    #                 st.metric(
+    #                     row['Origem'], 
+    #                     f"R$ {row['Total Net BRL']:,.2f}",
+    #                     f"{row['Registros']} registros"
+    #                 )
         
-        # Total geral
-        total_row = resumo_origem[resumo_origem['Origem'] == 'TOTAL']
-        if not total_row.empty:
-            total_brl = total_row['Total Net BRL'].iloc[0]
-            total_registros = total_row['Registros'].iloc[0]
-            st.metric("**💵 Total Geral**", f"R$ {total_brl:,.2f}", f"{total_registros} registros")
+    #     # Total geral
+    #     total_row = resumo_origem[resumo_origem['Origem'] == 'TOTAL']
+    #     if not total_row.empty:
+    #         total_brl = total_row['Total Net BRL'].iloc[0]
+    #         total_registros = total_row['Registros'].iloc[0]
+    #         st.metric("**💵 Total Geral**", f"R$ {total_brl:,.2f}", f"{total_registros} registros")
     
-    # Adiciona resumo do Youtube Channels se existir
-    if not df_youtube_processado.empty and 'Net' in df_youtube_processado.columns:
-        total_youtube_brl = df_youtube_processado['Net'].sum()
-        st.metric("📺 Youtube Channels Net BRL", f"R$ {total_youtube_brl:,.2f}")
+    # # Adiciona resumo do Youtube Channels se existir
+    # if not df_youtube_processado.empty and 'Net' in df_youtube_processado.columns:
+    #     total_youtube_brl = df_youtube_processado['Net'].sum()
+    #     st.metric("📺 Youtube Channels Net BRL", f"R$ {total_youtube_brl:,.2f}")
     
-    st.divider()
+    # st.divider()
     
     # Visualização dos dados processados
-    st.subheader("📊 Dados Processados")
+    st.subheader("💲 Resumo Financeiro por Origem")
     
     # Mostra resumo por origem em tabela
     if not resumo_origem.empty:
