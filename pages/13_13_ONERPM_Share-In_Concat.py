@@ -40,6 +40,29 @@ estrutura_final = [
     "Nome Arquivo"  # Nova coluna com nome do arquivo original
 ]
 
+# Estrutura para Youtube Channels
+estrutura_youtube = [
+    "Video Title",
+    "Video ID", 
+    "Channel ID",
+    "Store",
+    "Territory",
+    "Sale Type",
+    "Transaction Month",
+    "Accounted Date",
+    "% Share",
+    "Currency",
+    "Quantity",
+    "Onerpm Net",
+    "Onerpm Gross",
+    "Net",
+    "Gross",
+    "Payer Name",
+    "Receiver Name",
+    "Origem",
+    "Nome Arquivo"
+]
+
 # Mapeamento para Master_Share-In (baseado no mapeamento_shares_in_out do código original)
 mapeamento_master_share_in = {
     'Title': 'Album Title',
@@ -59,6 +82,24 @@ mapeamento_master_share_in = {
     'Payer Name': 'Payer Name'
 }
 
+# Mapeamento para YouTube Video de Shares In & Out para Youtube Channels
+mapeamento_youtube_shares_to_channels = {
+    'Title': 'Video Title',
+    'ID': 'Video ID',
+    'Parent ID': 'Channel ID',
+    'Store': 'Store',
+    'Territory': 'Territory',
+    'Sale Type': 'Sale Type',
+    'Transaction Month': 'Transaction Month',
+    'Accounted Date': 'Accounted Date',
+    '% Share In/Out': '% Share',
+    'Currency': 'Currency',
+    'Quantity': 'Quantity',
+    'Net': 'Onerpm Net',
+    'Payer Name': 'Payer Name',
+    'Receiver Name': 'Receiver Name'
+}
+
 def identificar_moedas(dfs: Dict[str, pd.DataFrame]) -> Set[str]:
     """Identifica todas as moedas únicas nas planilhas"""
     moedas = set()
@@ -68,8 +109,10 @@ def identificar_moedas(dfs: Dict[str, pd.DataFrame]) -> Set[str]:
             moedas.update(moedas_planilha)
     return moedas
 
-def processar_planilha_nas_nuvens(df: pd.DataFrame, payer_names: List[str], origem: str, nome_arquivo: str) -> pd.DataFrame:
-    """Processa a planilha Nas Nuvens filtrando por Share Type = 'In' e Payer Name específico"""
+def processar_planilha_nas_nuvens(df: pd.DataFrame, payer_names: List[str], origem: str, nome_arquivo: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Processa a planilha Nas Nuvens filtrando por Share Type = 'In' e Payer Name específico
+    Retorna: (df_normal, df_youtube_videos)"""
+    
     # Filtra por Share Type = 'In'
     if 'Share Type' in df.columns:
         df = df[df['Share Type'] == 'In'].copy()
@@ -78,57 +121,123 @@ def processar_planilha_nas_nuvens(df: pd.DataFrame, payer_names: List[str], orig
     if 'Payer Name' in df.columns:
         df = df[df['Payer Name'].isin(payer_names)].copy()
     
-    # Se não há dados após filtros, retorna DataFrame vazio
+    # Se não há dados após filtros, retorna DataFrames vazios
     if df.empty:
-        return pd.DataFrame(columns=estrutura_final)
+        return pd.DataFrame(columns=estrutura_final), pd.DataFrame(columns=estrutura_youtube)
     
-    # Aplica o mapeamento
-    df_processado = df.rename(columns=mapeamento_master_share_in)
+    # Separa linhas com YouTube Video das demais
+    df_youtube_videos = pd.DataFrame()
+    df_normal = df.copy()
     
-    # Adiciona colunas de origem e nome do arquivo
-    df_processado['Origem'] = origem
-    df_processado['Nome Arquivo'] = nome_arquivo
+    if 'Product Type' in df.columns:
+        mask_youtube = df['Product Type'] == 'YouTube Video'
+        df_youtube_videos = df[mask_youtube].copy()
+        df_normal = df[~mask_youtube].copy()
     
-    # Garante que todas as colunas da estrutura final existam
-    for coluna in estrutura_final:
-        if coluna not in df_processado.columns:
-            df_processado[coluna] = None
+    # Processa dados normais
+    df_normal_processado = pd.DataFrame(columns=estrutura_final)
+    if not df_normal.empty:
+        # Aplica o mapeamento
+        df_normal_processado = df_normal.rename(columns=mapeamento_master_share_in)
+        
+        # Adiciona colunas de origem e nome do arquivo
+        df_normal_processado['Origem'] = origem
+        df_normal_processado['Nome Arquivo'] = nome_arquivo
+        
+        # Garante que todas as colunas da estrutura final existam
+        for coluna in estrutura_final:
+            if coluna not in df_normal_processado.columns:
+                df_normal_processado[coluna] = None
+        
+        # Reordena as colunas conforme a estrutura final
+        df_normal_processado = df_normal_processado[estrutura_final]
     
-    # Reordena as colunas conforme a estrutura final
-    df_processado = df_processado[estrutura_final]
+    # Processa dados do YouTube Video
+    df_youtube_processado = pd.DataFrame(columns=estrutura_youtube)
+    if not df_youtube_videos.empty:
+        # Aplica o mapeamento específico para YouTube
+        df_youtube_processado = df_youtube_videos.rename(columns=mapeamento_youtube_shares_to_channels)
+        
+        # Adiciona colunas de origem e nome do arquivo
+        df_youtube_processado['Origem'] = origem
+        df_youtube_processado['Nome Arquivo'] = nome_arquivo
+        
+        # Garante que todas as colunas da estrutura youtube existam
+        for coluna in estrutura_youtube:
+            if coluna not in df_youtube_processado.columns:
+                df_youtube_processado[coluna] = None
+        
+        # Reordena as colunas conforme a estrutura youtube
+        df_youtube_processado = df_youtube_processado[estrutura_youtube]
     
-    return df_processado
+    return df_normal_processado, df_youtube_processado
 
-def processar_planilha_costa_gold(df: pd.DataFrame, origem: str, nome_arquivo: str) -> pd.DataFrame:
-    """Processa as planilhas Costa Gold e Costa Gold by DMC"""
+def processar_planilha_costa_gold(df: pd.DataFrame, origem: str, nome_arquivo: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Processa as planilhas Costa Gold e Costa Gold by DMC
+    Retorna: (df_normal, df_youtube_videos)"""
+    
     # Filtra por Share Type = 'In'
     if 'Share Type' in df.columns:
         df = df[df['Share Type'] == 'In'].copy()
     
-    # Se não há dados após filtros, retorna DataFrame vazio
+    # Se não há dados após filtros, retorna DataFrames vazios
     if df.empty:
-        return pd.DataFrame(columns=estrutura_final)
+        return pd.DataFrame(columns=estrutura_final), pd.DataFrame(columns=estrutura_youtube)
     
-    # Aplica o mapeamento
-    df_processado = df.rename(columns=mapeamento_master_share_in)
+    # Separa linhas com YouTube Video das demais
+    df_youtube_videos = pd.DataFrame()
+    df_normal = df.copy()
     
-    # Adiciona colunas de origem e nome do arquivo
-    df_processado['Origem'] = origem
-    df_processado['Nome Arquivo'] = nome_arquivo
+    if 'Product Type' in df.columns:
+        mask_youtube = df['Product Type'] == 'YouTube Video'
+        df_youtube_videos = df[mask_youtube].copy()
+        df_normal = df[~mask_youtube].copy()
     
-    # Garante que todas as colunas da estrutura final existam
-    for coluna in estrutura_final:
-        if coluna not in df_processado.columns:
-            df_processado[coluna] = None
+    # Processa dados normais
+    df_normal_processado = pd.DataFrame(columns=estrutura_final)
+    if not df_normal.empty:
+        # Aplica o mapeamento
+        df_normal_processado = df_normal.rename(columns=mapeamento_master_share_in)
+        
+        # Adiciona colunas de origem e nome do arquivo
+        df_normal_processado['Origem'] = origem
+        df_normal_processado['Nome Arquivo'] = nome_arquivo
+        
+        # Garante que todas as colunas da estrutura final existam
+        for coluna in estrutura_final:
+            if coluna not in df_normal_processado.columns:
+                df_normal_processado[coluna] = None
+        
+        # Reordena as colunas conforme a estrutura final
+        df_normal_processado = df_normal_processado[estrutura_final]
     
-    # Reordena as colunas conforme a estrutura final
-    df_processado = df_processado[estrutura_final]
+    # Processa dados do YouTube Video
+    df_youtube_processado = pd.DataFrame(columns=estrutura_youtube)
+    if not df_youtube_videos.empty:
+        # Aplica o mapeamento específico para YouTube
+        df_youtube_processado = df_youtube_videos.rename(columns=mapeamento_youtube_shares_to_channels)
+        
+        # Adiciona colunas de origem e nome do arquivo
+        df_youtube_processado['Origem'] = origem
+        df_youtube_processado['Nome Arquivo'] = nome_arquivo
+        
+        # Garante que todas as colunas da estrutura youtube existam
+        for coluna in estrutura_youtube:
+            if coluna not in df_youtube_processado.columns:
+                df_youtube_processado[coluna] = None
+        
+        # Reordena as colunas conforme a estrutura youtube
+        df_youtube_processado = df_youtube_processado[estrutura_youtube]
     
-    return df_processado
+    return df_normal_processado, df_youtube_processado
 
-def processar_youtube_channels(df: pd.DataFrame, taxas_cambio: Dict[str, float]) -> pd.DataFrame:
+def processar_youtube_channels(df: pd.DataFrame, taxas_cambio: Dict[str, float], origem: str, nome_arquivo: str) -> pd.DataFrame:
     """Processa a planilha Youtube Channels mantendo estrutura original e convertendo valores"""
     df_youtube = df.copy()
+    
+    # Adiciona colunas de origem e nome do arquivo
+    df_youtube['Origem'] = origem
+    df_youtube['Nome Arquivo'] = nome_arquivo
     
     # Renomeia as colunas originais primeiro
     if 'Gross' in df_youtube.columns:
@@ -215,6 +324,48 @@ def calcular_net_brl(df: pd.DataFrame, taxas_cambio: Dict[str, float]) -> pd.Dat
     df['Net BRL'] = df.apply(converter_para_brl, axis=1)
     return df
 
+def calcular_conversoes_youtube(df: pd.DataFrame, taxas_cambio: Dict[str, float]) -> pd.DataFrame:
+    """Calcula as conversões para BRL nas planilhas YouTube"""
+    df = df.copy()
+    
+    # Converte Onerpm Net para Net (BRL)
+    if 'Onerpm Net' in df.columns and 'Currency' in df.columns:
+        def converter_net_para_brl(row):
+            if pd.isna(row['Onerpm Net']) or pd.isna(row['Currency']):
+                return None
+            
+            moeda = row['Currency']
+            valor_net = row['Onerpm Net']
+            
+            if moeda == 'BRL':
+                return valor_net
+            elif moeda in taxas_cambio:
+                return valor_net * taxas_cambio[moeda]
+            else:
+                return None
+        
+        df['Net'] = df.apply(converter_net_para_brl, axis=1)
+    
+    # Converte Onerpm Gross para Gross (BRL) se existir
+    if 'Onerpm Gross' in df.columns and 'Currency' in df.columns:
+        def converter_gross_para_brl(row):
+            if pd.isna(row['Onerpm Gross']) or pd.isna(row['Currency']):
+                return None
+            
+            moeda = row['Currency']
+            valor_gross = row['Onerpm Gross']
+            
+            if moeda == 'BRL':
+                return valor_gross
+            elif moeda in taxas_cambio:
+                return valor_gross * taxas_cambio[moeda]
+            else:
+                return None
+        
+        df['Gross'] = df.apply(converter_gross_para_brl, axis=1)
+    
+    return df
+
 def preparar_df_para_download(df: pd.DataFrame, taxas_cambio: Dict[str, float]) -> pd.DataFrame:
     """Prepara o DataFrame final para download com as colunas renomeadas"""
     # Primeiro calcula Gross BRL
@@ -259,6 +410,40 @@ def criar_resumo_financeiro_por_origem(df_final: pd.DataFrame) -> pd.DataFrame:
                 'Origem': 'TOTAL',
                 'Registros': total_registros,
                 'Total Net BRL': total_net_brl
+            }])
+        ], ignore_index=True)
+    
+    return resumo_df
+
+def criar_resumo_youtube(df_youtube: pd.DataFrame) -> pd.DataFrame:
+    """Cria um resumo financeiro para dados do YouTube"""
+    resumo_data = []
+    
+    # Agrupa por origem e calcula totais
+    for origem in df_youtube['Origem'].dropna().unique():
+        df_origem = df_youtube[df_youtube['Origem'] == origem]
+        total_net = df_origem['Net'].sum() if 'Net' in df_origem.columns else 0
+        registros = len(df_origem)
+        
+        resumo_data.append({
+            'Origem': origem,
+            'Registros': registros,
+            'Total Net BRL': total_net
+        })
+    
+    resumo_df = pd.DataFrame(resumo_data)
+    
+    # Adiciona linha de total se há dados
+    if not resumo_df.empty:
+        total_registros = resumo_df['Registros'].sum()
+        total_net = resumo_df['Total Net BRL'].sum()
+        
+        resumo_df = pd.concat([
+            resumo_df,
+            pd.DataFrame([{
+                'Origem': 'TOTAL',
+                'Registros': total_registros,
+                'Total Net BRL': total_net
             }])
         ], ignore_index=True)
     
@@ -354,7 +539,6 @@ if arquivos_enviados:
                         'df': df_youtube,
                         'arquivo': arquivo
                     }
-                    #st.info(f"📺 Youtube Channels encontrado em {nome}")
                     # Adiciona moedas do Youtube Channels
                     if 'Currency' in df_youtube.columns:
                         moedas_youtube = df_youtube['Currency'].dropna().unique()
@@ -401,7 +585,7 @@ if arquivos_enviados:
             if st.button("Processar Dados", type="primary"):
                 with st.spinner("Processando dados..."):
                     dfs_processados = []
-                    df_youtube_processado = pd.DataFrame()
+                    youtube_shares_dfs = []  # Para YouTube Videos das Shares In & Out
                     
                     # Processa cada arquivo
                     for nome, dados in dfs_carregados.items():
@@ -412,12 +596,12 @@ if arquivos_enviados:
                         if nome == "Nas Nuvens":
                             # Filtra Nas Nuvens por Payer Name = Costa Gold ou Costa Gold by DMC
                             payer_names = ["Costa Gold", "Costa Gold by DMC"]
-                            df_processado = processar_planilha_nas_nuvens(
+                            df_processado, df_youtube_shares = processar_planilha_nas_nuvens(
                                 df, payer_names, nome, nome_arquivo
                             )
                         else:
                             # Processa Costa Gold e Costa Gold by DMC
-                            df_processado = processar_planilha_costa_gold(
+                            df_processado, df_youtube_shares = processar_planilha_costa_gold(
                                 df, nome, nome_arquivo
                             )
                         
@@ -427,34 +611,56 @@ if arquivos_enviados:
                             dfs_processados.append(df_processado)
                             st.success(f"✓ {nome} processado: {len(df_processado)} registros")
                         else:
-                            st.warning(f"⚠️ Nenhum dado válido encontrado em {nome}")
+                            st.info(f"ℹ️ Nenhum dado normal encontrado em {nome}")
+                        
+                        if not df_youtube_shares.empty:
+                            # Calcula conversões para YouTube
+                            df_youtube_shares = calcular_conversoes_youtube(df_youtube_shares, taxas_cambio)
+                            youtube_shares_dfs.append(df_youtube_shares)
+                            st.success(f"✓ YouTube Videos de {nome}: {len(df_youtube_shares)} registros")
                     
                     # Processa Youtube Channels se existir
+                    youtube_channels_dfs = []
                     if youtube_data:
-                        youtube_dfs = []
                         for nome, dados in youtube_data.items():
                             df_youtube = dados['df']
-                            df_youtube_proc = processar_youtube_channels(df_youtube, taxas_cambio)
+                            arquivo = dados['arquivo']
+                            nome_arquivo = arquivo.name if arquivo.name else f"{nome}.xlsx"
+                            
+                            df_youtube_proc = processar_youtube_channels(df_youtube, taxas_cambio, nome, nome_arquivo)
                             if not df_youtube_proc.empty:
-                                youtube_dfs.append(df_youtube_proc)
-                                st.success(f"✓ Youtube Channels de {nome} processado: {len(df_youtube_proc)} registros")
-                        
-                        if youtube_dfs:
-                            df_youtube_processado = pd.concat(youtube_dfs, ignore_index=True)
+                                youtube_channels_dfs.append(df_youtube_proc)
+                                st.success(f"✓ Youtube Channels de {nome}: {len(df_youtube_proc)} registros")
                     
-                    # Concatena todos os DataFrames
+                    # Concatena YouTube Shares com YouTube Channels
+                    df_youtube_final = pd.DataFrame()
+                    if youtube_shares_dfs or youtube_channels_dfs:
+                        todos_youtube = []
+                        
+                        # Adiciona YouTube Videos das Shares In & Out
+                        if youtube_shares_dfs:
+                            todos_youtube.extend(youtube_shares_dfs)
+                        
+                        # Adiciona YouTube Channels
+                        if youtube_channels_dfs:
+                            todos_youtube.extend(youtube_channels_dfs)
+                        
+                        if todos_youtube:
+                            df_youtube_final = pd.concat(todos_youtube, ignore_index=True)
+                    
+                    # Concatena todos os DataFrames normais
                     if dfs_processados:
                         df_final = pd.concat(dfs_processados, ignore_index=True)
                         
                         # Armazena no session_state
                         st.session_state['df_final'] = df_final
-                        st.session_state['df_youtube_processado'] = df_youtube_processado
+                        st.session_state['df_youtube_final'] = df_youtube_final
                         st.session_state['taxas_cambio'] = taxas_cambio
                         st.session_state['processamento_concluido'] = True
                         
                         st.success(f"🎉 Processamento concluído! Total de registros: {len(df_final)}")
-                        if not df_youtube_processado.empty:
-                            st.success(f"📺 Youtube Channels processado: {len(df_youtube_processado)} registros")
+                        if not df_youtube_final.empty:
+                            st.success(f"📺 YouTube consolidado: {len(df_youtube_final)} registros")
                         st.rerun()
                     else:
                         st.error("❌ Nenhum dado válido foi processado")
@@ -465,41 +671,13 @@ if arquivos_enviados:
 # Exibe resultados somente após processamento
 if 'df_final' in st.session_state and 'processamento_concluido' in st.session_state:
     df_final = st.session_state['df_final']
-    df_youtube_processado = st.session_state.get('df_youtube_processado', pd.DataFrame())
+    df_youtube_final = st.session_state.get('df_youtube_final', pd.DataFrame())
     taxas_cambio = st.session_state['taxas_cambio']
     
     st.divider()
     
-    # # Resumo financeiro por origem
-    # st.subheader("💲 Resumo Financeiro por Origem")
+    # Resumo financeiro por origem
     resumo_origem = criar_resumo_financeiro_por_origem(df_final)
-    
-    # if not resumo_origem.empty:
-    #     # Exibe métricas em colunas
-    #     origens = resumo_origem[resumo_origem['Origem'] != 'TOTAL']
-    #     if not origens.empty:
-    #         cols = st.columns(len(origens))
-    #         for i, (_, row) in enumerate(origens.iterrows()):
-    #             with cols[i]:
-    #                 st.metric(
-    #                     row['Origem'], 
-    #                     f"R$ {row['Total Net BRL']:,.2f}",
-    #                     f"{row['Registros']} registros"
-    #                 )
-        
-    #     # Total geral
-    #     total_row = resumo_origem[resumo_origem['Origem'] == 'TOTAL']
-    #     if not total_row.empty:
-    #         total_brl = total_row['Total Net BRL'].iloc[0]
-    #         total_registros = total_row['Registros'].iloc[0]
-    #         st.metric("**💵 Total Geral**", f"R$ {total_brl:,.2f}", f"{total_registros} registros")
-    
-    # # Adiciona resumo do Youtube Channels se existir
-    # if not df_youtube_processado.empty and 'Net' in df_youtube_processado.columns:
-    #     total_youtube_brl = df_youtube_processado['Net'].sum()
-    #     st.metric("📺 Youtube Channels Net BRL", f"R$ {total_youtube_brl:,.2f}")
-    
-    # st.divider()
     
     # Visualização dos dados processados
     st.subheader("💲 Resumo Financeiro por Origem")
@@ -515,9 +693,27 @@ if 'df_final' in st.session_state and 'processamento_concluido' in st.session_st
             hide_index=True
         )
     
+    # Resumo YouTube se existir
+    if not df_youtube_final.empty:
+        st.subheader("📺 Resumo YouTube")
+        resumo_youtube = criar_resumo_youtube(df_youtube_final)
+        if not resumo_youtube.empty:
+            st.dataframe(
+                resumo_youtube.style.format({
+                    'Total Net BRL': lambda x: f"R$ {x:,.2f}" if pd.notna(x) else x,
+                    'Registros': lambda x: f"{x:,}" if pd.notna(x) else x
+                }),
+                use_container_width=True,
+                hide_index=True
+            )
+    
     # Mostra preview dos dados
-    st.write("**Preview dos dados processados:**")
+    st.write("**Preview dos dados processados (Shares In & Out):**")
     st.dataframe(df_final.head(10), use_container_width=True)
+    
+    if not df_youtube_final.empty:
+        st.write("**Preview dos dados YouTube:**")
+        st.dataframe(df_youtube_final.head(10), use_container_width=True)
     
     st.divider()
     
@@ -547,20 +743,25 @@ if 'df_final' in st.session_state and 'processamento_concluido' in st.session_st
             key="download_final"
         )
     
-    # Arquivo 2: Youtube Channels
+    # Arquivo 2: Youtube Consolidado
     with col2:
-        st.write("**📺 Youtube Channels**")
-        if not df_youtube_processado.empty:
+        st.write("**📺 YouTube Consolidado**")
+        if not df_youtube_final.empty:
             output2 = io.BytesIO()
             with pd.ExcelWriter(output2, engine='openpyxl') as writer:
-                df_youtube_processado.to_excel(writer, sheet_name='Youtube_Channels', index=False)
+                df_youtube_final.to_excel(writer, sheet_name='YouTube_Consolidado', index=False)
+                
+                # Adiciona aba de resumo YouTube se existir
+                resumo_youtube = criar_resumo_youtube(df_youtube_final)
+                if not resumo_youtube.empty:
+                    resumo_youtube.to_excel(writer, sheet_name='Resumo_YouTube', index=False)
             
             st.download_button(
-                label="📄 Baixar Youtube Channels",
+                label="📄 Baixar YouTube Consolidado",
                 data=output2.getvalue(),
-                file_name="youtube_channels_costa_gold.xlsx",
+                file_name="youtube_consolidado_costa_gold.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 key="download_youtube"
             )
         else:
-            st.info("Nenhum dado do Youtube Channels para download")
+            st.info("Nenhum dado do YouTube para download")
