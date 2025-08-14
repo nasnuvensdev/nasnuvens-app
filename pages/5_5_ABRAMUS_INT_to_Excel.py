@@ -10,7 +10,6 @@ def create_download_link(df, filename):
     """Cria um link de download para o arquivo Excel"""
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        # Criar abas diferentes
         # 1. Detalhamento Completo
         df.to_excel(writer, sheet_name='Detalhamento Completo', index=False)
         
@@ -24,7 +23,7 @@ def create_download_link(df, filename):
         resumo_sociedade = resumo_sociedade.sort_values('Rendimento', ascending=False)
         resumo_sociedade.to_excel(writer, sheet_name='Resumo por Sociedade', index=False)
         
-        # Obter o objeto workbook e adicionar formatos
+        # Formatação
         workbook = writer.book
         money_format = workbook.add_format({'num_format': 'R$ #,##0.00'})
         header_format = workbook.add_format({
@@ -35,25 +34,20 @@ def create_download_link(df, filename):
             'border': 1
         })
         
-        # Formatar cada aba
         for sheet_name in writer.sheets:
             worksheet = writer.sheets[sheet_name]
-            
-            # Ajustar largura das colunas
             if sheet_name == 'Detalhamento Completo':
                 worksheet.set_column('A:A', 40)  # Título
                 worksheet.set_column('B:B', 15)  # ISRC/ISWC
                 worksheet.set_column('C:H', 20)  # Outras colunas
                 worksheet.set_column('I:I', 15, money_format)  # Rendimento
-            
             elif sheet_name == 'Resumo por Música':
-                worksheet.set_column('A:A', 40)  # Título
-                worksheet.set_column('B:B', 15)  # ISRC/ISWC
-                worksheet.set_column('C:C', 15, money_format)  # Rendimento
-            
+                worksheet.set_column('A:A', 40)
+                worksheet.set_column('B:B', 15)
+                worksheet.set_column('C:C', 15, money_format)
             elif sheet_name == 'Resumo por Sociedade':
-                worksheet.set_column('A:B', 25)  # Sociedade e Território
-                worksheet.set_column('C:C', 15, money_format)  # Rendimento
+                worksheet.set_column('A:B', 25)
+                worksheet.set_column('C:C', 15, money_format)
     
     excel_data = output.getvalue()
     b64 = base64.b64encode(excel_data).decode('utf-8')
@@ -75,7 +69,8 @@ def extract_data_from_pdf(pdf_file):
                 if any(x in line for x in ['DISTRIBUIÇÃO DE DIREITOS', 'DATA :', 'TOTAL:', 'DEMONSTRATIVO', 'CPF:', 'ABRAMUS:', 'ECAD:']):
                     continue
                     
-                isrc_match = re.search(r'([T]\d{10})', line)
+                # Detecta linha de título + ISRC
+                isrc_match = re.search(r'(T\d{10})', line)
                 if isrc_match:
                     parts = line.split()
                     isrc_index = next(i for i, part in enumerate(parts) if re.match(r'T\d{10}', part))
@@ -84,24 +79,31 @@ def extract_data_from_pdf(pdf_file):
                     continue
                 
                 parts = line.split()
-                if len(parts) >= 8 and current_title:
+                if len(parts) >= 6 and current_title:
                     try:
+                        # Captura valor e período
                         value = float(parts[-1].replace(',', '.'))
                         period_pattern = r'\d{4}/\d{2}\s*-\s*\d{4}/\d{2}'
-                        period = ' '.join(re.findall(period_pattern, line)[0].split())
+                        period_match = re.search(period_pattern, line)
+                        if not period_match:
+                            continue
+                        period = period_match.group(0)
+                        
+                        # Posições fixas apenas para sociedade e território
                         society = parts[0]
                         territory = parts[1]
-                        usage_type = ' '.join(parts[2:-4])
-                        holder = ' '.join(parts[-4:-2])
+                        
+                        # Captura rubrica usando tudo que está entre território e período
+                        period_start_index = line.find(period)
+                        rubrica_text = line[len(society) + len(territory) + 2 : period_start_index].strip()
                         
                         data.append({
                             'Título': current_title,
                             'ISRC/ISWC': current_isrc,
                             'Sociedade': society,
                             'Território': territory,
-                            'Rubrica': usage_type,
+                            'Rubrica': rubrica_text,
                             'Direito': 'AUTORAL',
-                            'Titular': holder,
                             'Período': period,
                             'Rendimento': value
                         })
@@ -112,7 +114,6 @@ def extract_data_from_pdf(pdf_file):
 
 def main():
     st.title("ABRAMUS INT to Excel")
-    
     st.caption("Processa o demonstrativo internacional da ABRAMUS em pdf e gera um relatório Excel.")
     
     uploaded_file = st.file_uploader("Faça upload do demonstrativo PDF da ABRAMUS", type="pdf")
@@ -120,10 +121,8 @@ def main():
     if uploaded_file is not None:
         with st.spinner('Processando o arquivo... Por favor, aguarde.'):
             try:
-                # Processar o PDF
                 df = extract_data_from_pdf(uploaded_file)
                 
-                # Mostrar estatísticas básicas
                 st.success("Arquivo processado com sucesso!")
                 col1, col2 = st.columns(2)
                 with col1:
@@ -131,15 +130,12 @@ def main():
                 with col2:
                     st.metric("Valor total", f"R$ {df['Rendimento'].sum():,.2f}")
                 
-                # Mostrar preview dos dados
                 st.subheader("Preview dos dados extraídos")
                 st.dataframe(df.head())
                 
-                # Criar nome do arquivo Excel mantendo o nome original do PDF
                 original_filename = uploaded_file.name
                 excel_filename = f"{original_filename.rsplit('.', 1)[0]}_PYTHON.xlsx"
                 
-                # Criar e oferecer download do Excel
                 download_link = create_download_link(df, excel_filename)
                 st.markdown(download_link, unsafe_allow_html=True)
                 

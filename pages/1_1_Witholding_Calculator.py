@@ -127,14 +127,14 @@ if uploaded_file is not None:
     #----------------------------------
     # Leitura do arquivo com base na opção selecionada
     #----------------------------------
-    if report_option == 'The Orchard (Europa)':
-        df = pd.read_excel(uploaded_file)
+    # if report_option == 'The Orchard (Europa)':
+    #     df = pd.read_excel(uploaded_file)
 
-    elif report_option == 'Ingrooves':
-        sheet_name = 'Digital Sales Details'
-        df = pd.read_excel(uploaded_file, sheet_name=sheet_name)
+    # elif report_option == 'Ingrooves':
+    #     sheet_name = 'Digital Sales Details'
+    #     df = pd.read_excel(uploaded_file, sheet_name=sheet_name)
 
-    elif report_option == 'Onerpm':
+    if report_option == 'Onerpm':
         xls = pd.ExcelFile(uploaded_file)
         required_sheets = ['Masters', 'Youtube Channels', 'Shares In & Out']
         
@@ -143,51 +143,183 @@ if uploaded_file is not None:
         usd_tax = st.number_input('Insira o valor fixo da taxa em USD', min_value=0.0, value=20.0, step=1.0)
         brl_tax = st.number_input('Insira o valor fixo da taxa em BRL', min_value=0.0, value=0.75, step=0.01)
 
+    # #----------------------------------
+    # # Processamento THE ORCHARD
+    # #----------------------------------
+    # if report_option == 'The Orchard (Europa)':
+        
+    #     df = pd.read_excel(uploaded_file)
+        
+    #     if st.button('Processar desconto', type='primary', key='process_orchard'):
+    #         net_total = df['Label Share Net Receipts'].sum()
+    #         st.session_state['orchard_net_total'] = net_total
+
+    #         # Aplica a fórmula de withholding
+    #         df['Label Share Net Receipts'] = df.apply(
+    #             lambda row: row['Label Share Net Receipts'] - ((row['Label Share Net Receipts'] * 30) / 100)
+    #             if row['Territory'] == 'USA' else row['Label Share Net Receipts'],
+    #             axis=1
+    #         )
+
+    #         withholding_total = df['Label Share Net Receipts'].sum()
+    #         total_withheld = net_total - withholding_total
+
+    #         # Salva os resultados no session_state
+    #         st.session_state['orchard_withholding_total'] = withholding_total
+    #         st.session_state['orchard_total_withheld'] = total_withheld
+
+    #         # Prepara o arquivo para download
+    #         output = BytesIO()
+    #         writer = pd.ExcelWriter(output, engine='xlsxwriter')
+    #         df.to_excel(writer, index=False)
+    #         writer.close()
+    #         st.session_state['orchard_processed_data'] = output.getvalue()
+
+    #     # Exibe os resultados se existirem no session_state
+    #     if st.session_state['orchard_net_total'] is not None:
+    #         st.write(f'O valor Net é **USD {st.session_state["orchard_net_total"]:,.2f}**')
+    #         st.write(f'O total de withholding aplicado é **USD {st.session_state["orchard_total_withheld"]:,.2f}**')
+    #         st.write(f':red[O valor Net menos withholding é **USD {st.session_state["orchard_withholding_total"]:,.2f}**]')
+
+    #         # Botão de download
+    #         st.download_button(
+    #             label="Baixar arquivo processado",
+    #             data=st.session_state['orchard_processed_data'],
+    #             file_name=adjust_file_name(original_file_name),
+    #             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    # )
+
     #----------------------------------
-    # Processamento THE ORCHARD
+    # Processamento THE ORCHARD (aceita CSV e Excel)
     #----------------------------------
     if report_option == 'The Orchard (Europa)':
-        
-        df = pd.read_excel(uploaded_file)
-        
+
+        def _coerce_number(series):
+            # Converte textos tipo "1,234.56", "($12.34)" etc. para número
+            return pd.to_numeric(
+                series.astype(str)
+                    .str.replace(',', '', regex=False)
+                    .str.replace('$', '', regex=False)
+                    .str.replace('(', '-', regex=False)
+                    .str.replace(')', '', regex=False),
+                errors='coerce'
+            ).fillna(0.0)
+
+        # Apenas cria o botão; leitura/execução ocorre dentro do clique
         if st.button('Processar desconto', type='primary', key='process_orchard'):
-            net_total = df['Label Share Net Receipts'].sum()
-            st.session_state['orchard_net_total'] = net_total
+            try:
+                uploaded_file.seek(0)
+                name = uploaded_file.name.lower()
 
-            # Aplica a fórmula de withholding
-            df['Label Share Net Receipts'] = df.apply(
-                lambda row: row['Label Share Net Receipts'] - ((row['Label Share Net Receipts'] * 30) / 100)
-                if row['Territory'] == 'USA' else row['Label Share Net Receipts'],
-                axis=1
-            )
+                # Detecta formato de entrada
+                is_csv = name.endswith('.csv')
+                is_xlsx = name.endswith('.xlsx')
+                is_xls  = name.endswith('.xls')
 
-            withholding_total = df['Label Share Net Receipts'].sum()
-            total_withheld = net_total - withholding_total
+                # Lê e configura colunas conforme o formato
+                if is_csv:
+                    df = pd.read_csv(uploaded_file, low_memory=False)
+                    net_column = 'NET SHARE ACCOUNT CURRENCY'
+                    territory_column = 'SALE COUNTRY'
+                    out_name = f"{original_file_name}_withholding_excluded.csv"
+                    out_mime = "text/csv"
 
-            # Salva os resultados no session_state
-            st.session_state['orchard_withholding_total'] = withholding_total
-            st.session_state['orchard_total_withheld'] = total_withheld
+                    # Garantia de numérico (CSV pode vir como texto)
+                    if net_column not in df.columns or territory_column not in df.columns:
+                        st.error(f"Colunas necessárias não encontradas no CSV. Esperado: '{net_column}' e '{territory_column}'.")
+                        st.write("Colunas disponíveis:", list(df.columns))
+                        st.stop()
+                    df[net_column] = _coerce_number(df[net_column])
+                    df[territory_column] = df[territory_column].astype(str).str.strip()
 
-            # Prepara o arquivo para download
-            output = BytesIO()
-            writer = pd.ExcelWriter(output, engine='xlsxwriter')
-            df.to_excel(writer, index=False)
-            writer.close()
-            st.session_state['orchard_processed_data'] = output.getvalue()
+                    # Para CSV, aceitamos USA/United States/United States of America
+                    usa_mask = df[territory_column].str.upper().isin({'USA','UNITED STATES','UNITED STATES OF AMERICA'})
 
-        # Exibe os resultados se existirem no session_state
-        if st.session_state['orchard_net_total'] is not None:
-            st.write(f'O valor Net é **USD {st.session_state["orchard_net_total"]:,.2f}**')
-            st.write(f'O total de withholding aplicado é **USD {st.session_state["orchard_total_withheld"]:,.2f}**')
-            st.write(f':red[O valor Net menos withholding é **USD {st.session_state["orchard_withholding_total"]:,.2f}**]')
+                    net_total = float(df[net_column].sum())
+                    st.session_state['orchard_net_total'] = net_total
 
-            # Botão de download
-            st.download_button(
-                label="Baixar arquivo processado",
-                data=st.session_state['orchard_processed_data'],
-                file_name=adjust_file_name(original_file_name),
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+                    # Aplica 30% de desconto só nas linhas dos EUA (CSV)
+                    df.loc[usa_mask, net_column] = df.loc[usa_mask, net_column] * 0.70
+
+                    withholding_total = float(df[net_column].sum())
+                    total_withheld = net_total - withholding_total
+
+                    # Serializa como CSV
+                    output = BytesIO()
+                    output.write(df.to_csv(index=False).encode('utf-8'))
+                    processed_bytes = output.getvalue()
+
+                elif is_xlsx or is_xls:
+                    # *** Mantido exatamente como no seu código original para Excel ***
+                    if is_xlsx:
+                        df = pd.read_excel(uploaded_file, engine='openpyxl')
+                    elif is_xls:
+                        df = pd.read_excel(uploaded_file, engine='xlrd')
+                    else:
+                        df = pd.read_excel(uploaded_file, engine='openpyxl')
+
+                    net_column = 'Label Share Net Receipts'
+                    territory_column = 'Territory'
+                    out_name = adjust_file_name(original_file_name)
+                    out_mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+                    if net_column not in df.columns or territory_column not in df.columns:
+                        st.error(f"Colunas necessárias não encontradas no Excel. Esperado: '{net_column}' e '{territory_column}'.")
+                        st.write("Colunas disponíveis:", list(df.columns))
+                        st.stop()
+
+                    net_total = df[net_column].sum()
+                    st.session_state['orchard_net_total'] = float(net_total)
+
+                    # LÓGICA ORIGINAL (Excel): só quando Territory == 'USA'
+                    df[net_column] = df.apply(
+                        lambda row: row[net_column] - ((row[net_column] * 30) / 100)
+                        if row[territory_column] == 'USA' else row[net_column],
+                        axis=1
+                    )
+
+                    withholding_total = df[net_column].sum()
+                    total_withheld = net_total - withholding_total
+
+                    # Serializa como Excel
+                    output = BytesIO()
+                    writer = pd.ExcelWriter(output, engine='xlsxwriter')
+                    df.to_excel(writer, index=False)
+                    writer.close()
+                    processed_bytes = output.getvalue()
+                else:
+                    st.error("Formato não suportado. Envie um .csv, .xlsx ou .xls.")
+                    st.stop()
+
+                # Salva resultados
+                st.session_state['orchard_withholding_total'] = float(withholding_total)
+                st.session_state['orchard_total_withheld'] = float(total_withheld)
+                st.session_state['orchard_processed_data'] = processed_bytes
+
+                # Exibe resumo
+                st.write(f'O valor Net é **USD {st.session_state["orchard_net_total"]:,.2f}**')
+                st.write(f'O total de withholding aplicado é **USD {st.session_state["orchard_total_withheld"]:,.2f}**')
+                st.write(f':red[O valor Net menos withholding é **USD {st.session_state["orchard_withholding_total"]:,.2f}**]')
+
+                # Download
+                st.download_button(
+                    label="Baixar arquivo processado",
+                    data=st.session_state['orchard_processed_data'],
+                    file_name=out_name,
+                    mime=out_mime
+                )
+
+                st.success("Processamento concluído com sucesso!")
+
+            except Exception as e:
+                st.error(f"Erro durante o processamento: {str(e)}")
+                import traceback
+                st.code(traceback.format_exc())
+                st.session_state['orchard_net_total'] = None
+                st.session_state['orchard_withholding_total'] = None
+                st.session_state['orchard_total_withheld'] = None
+                st.session_state['orchard_processed_data'] = None
+    
 
     #----------------------------------
     # Processamento INGROOVES
