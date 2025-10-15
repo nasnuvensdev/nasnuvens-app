@@ -83,11 +83,15 @@ if uploaded_files:
                 if "ST" in file.name.upper():
                     df = pd.read_excel(file)
                     
+                    # Verifica qual coluna existe no arquivo
                     if "ROYALTIES_TO_BE_PAID" in df.columns:
                         total_royalties = df["ROYALTIES_TO_BE_PAID"].sum()
                         results.append((file.name, total_royalties))
+                    elif "ROYALTIES_TO_BE_PAID_$" in df.columns:
+                        total_royalties = df["ROYALTIES_TO_BE_PAID_$"].sum()
+                        results.append((file.name, total_royalties))
                     else:
-                        st.warning(f"A coluna 'ROYALTIES_TO_BE_PAID' não foi encontrada em {file.name}")
+                        st.warning(f"Nenhuma coluna de royalties foi encontrada em {file.name}")
 
             if results:
                 # Cria o DataFrame com os resultados
@@ -114,7 +118,7 @@ if uploaded_files:
 
                 st.write(f'Desconto R3 (2,5%): **{desconto_r3}**')
 
-                st.write(f'Total com desconto: **{total_royalties_sum-desconto_r3}**')
+                st.write(f'Total com desconto: **{(total_royalties_sum-desconto_r3).round(2)}**')
 
 
                 
