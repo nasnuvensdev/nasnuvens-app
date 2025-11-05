@@ -94,12 +94,13 @@ def identificar_moedas(dfs: Dict[str, pd.DataFrame]) -> Set[str]:
 
 def processar_planilha(df: pd.DataFrame, mapeamento: Dict[str, str], nome_planilha: str, nome_arquivo: str = None) -> pd.DataFrame:
     """Processa uma planilha aplicando o mapeamento de colunas"""
-    # Filtra apenas "In" para Shares In & Out
-    if nome_planilha == "Shares In & Out" and 'Share Type' in df.columns:
-        df = df[df['Share Type'] == 'In'].copy()
     
     # Renomeia as colunas conforme o mapeamento
     df_processado = df.rename(columns=mapeamento)
+    
+    # Adiciona a coluna Share Type se vier de Shares In & Out (antes de qualquer processamento)
+    if nome_planilha == "Shares In & Out" and 'Share Type' in df.columns:
+        df_processado['Share Type'] = df['Share Type']
     
     # Adiciona a coluna "Origem" com o nome da planilha
     df_processado['Origem'] = nome_planilha
@@ -115,8 +116,12 @@ def processar_planilha(df: pd.DataFrame, mapeamento: Dict[str, str], nome_planil
         if coluna not in df_processado.columns:
             df_processado[coluna] = None
     
-    # Reordena as colunas conforme a estrutura final
-    df_processado = df_processado[estrutura_final]
+    # Reordena as colunas conforme a estrutura final (Share Type não está na estrutura, então será mantido separadamente)
+    colunas_ordenadas = estrutura_final.copy()
+    if 'Share Type' in df_processado.columns:
+        colunas_ordenadas.append('Share Type')
+    
+    df_processado = df_processado[colunas_ordenadas]
     
     return df_processado
 
@@ -243,6 +248,31 @@ def calcular_net_brl(df: pd.DataFrame, taxas_cambio: Dict[str, float]) -> pd.Dat
     df['Net BRL'] = df.apply(converter_para_brl, axis=1)
     return df
 
+def aplicar_desconto_proporcional(df: pd.DataFrame, taxa_usd: float, taxa_brl: float, taxas_cambio: Dict[str, float]) -> pd.DataFrame:
+    """Aplica desconto proporcional das taxas bancárias na coluna Net"""
+    df = df.copy()
+    
+    # Converte as taxas bancárias para BRL
+    taxa_usd_em_brl = taxa_usd * taxas_cambio.get('USD', 1.0)
+    total_taxas_brl = taxa_usd_em_brl + taxa_brl
+    
+    # Calcula o total Net em BRL antes do desconto
+    total_net_brl = df['Net BRL'].sum()
+    
+    if total_net_brl > 0:
+        # Calcula o desconto proporcional para cada linha
+        df['Net'] = df.apply(lambda row: 
+            row['Net'] - (row['Net BRL'] / total_net_brl * total_taxas_brl / taxas_cambio.get(row['Currency'], 1.0))
+            if pd.notna(row['Net']) and pd.notna(row['Net BRL']) and pd.notna(row['Currency'])
+            else row['Net'],
+            axis=1
+        )
+        
+        # Recalcula Net BRL após o desconto
+        df = calcular_net_brl(df, taxas_cambio)
+    
+    return df
+
 def preparar_df_para_download(df: pd.DataFrame, taxas_cambio: Dict[str, float]) -> pd.DataFrame:
     """Prepara o DataFrame final para download com as colunas renomeadas"""
     # Primeiro calcula Gross BRL
@@ -265,14 +295,38 @@ def criar_resumo_financeiro_por_origem(df_final: pd.DataFrame) -> pd.DataFrame:
     # Agrupa por origem e calcula totais
     for origem in df_final['Origem'].dropna().unique():
         df_origem = df_final[df_final['Origem'] == origem]
-        total_net_brl = df_origem['Net BRL'].sum()
-        registros = len(df_origem)
         
-        resumo_data.append({
-            'Origem': origem,
-            'Registros': registros,
-            'Total Net BRL': total_net_brl
-        })
+        # Separa Share In e Share Out se for da aba Shares In & Out
+        if origem == "Shares In & Out":
+            # Share In
+            df_share_in = df_origem[df_origem['Share Type'] == 'In'] if 'Share Type' in df_origem.columns else df_origem
+            if not df_share_in.empty:
+                total_net_brl_in = df_share_in['Net BRL'].sum()
+                registros_in = len(df_share_in)
+                resumo_data.append({
+                    'Origem': 'Share In',
+                    'Registros': registros_in,
+                    'Total Net BRL': total_net_brl_in
+                })
+            
+            # Share Out
+            df_share_out = df_origem[df_origem['Share Type'] == 'Out'] if 'Share Type' in df_origem.columns else pd.DataFrame()
+            if not df_share_out.empty:
+                total_net_brl_out = df_share_out['Net BRL'].sum()
+                registros_out = len(df_share_out)
+                resumo_data.append({
+                    'Origem': 'Share Out',
+                    'Registros': registros_out,
+                    'Total Net BRL': total_net_brl_out
+                })
+        else:
+            total_net_brl = df_origem['Net BRL'].sum()
+            registros = len(df_origem)
+            resumo_data.append({
+                'Origem': origem,
+                'Registros': registros,
+                'Total Net BRL': total_net_brl
+            })
     
     resumo_df = pd.DataFrame(resumo_data)
     # Adiciona linha de total
@@ -309,6 +363,35 @@ def criar_resumo_share_out(df_share_out: pd.DataFrame) -> pd.DataFrame:
         pd.DataFrame([{
             'Receiver Name': 'TOTAL',
             'Net BRL': total_net_brl
+        }])
+    ], ignore_index=True)
+    
+    return resumo
+
+def criar_resumo_por_moeda(df_final: pd.DataFrame) -> pd.DataFrame:
+    """Cria resumo dos valores por moeda"""
+    resumo = df_final.groupby('Currency').agg({
+        'Net': 'sum',
+        'Net BRL': 'sum'
+    }).reset_index()
+    
+    resumo = resumo.rename(columns={
+        'Currency': 'Moeda',
+        'Net': 'Total (Moeda Original)',
+        'Net BRL': 'Total (BRL)'
+    })
+    
+    resumo = resumo.sort_values('Total (BRL)', ascending=False)
+    
+    # Adiciona linha de total
+    total_brl = resumo['Total (BRL)'].sum()
+    
+    resumo = pd.concat([
+        resumo,
+        pd.DataFrame([{
+            'Moeda': 'TOTAL',
+            'Total (Moeda Original)': None,
+            'Total (BRL)': total_brl
         }])
     ], ignore_index=True)
     
@@ -386,6 +469,34 @@ if uploaded_file is not None:
                 else:
                     taxas_cambio[moeda] = 1.0
             
+                    st.divider()
+            
+            # Inputs para taxas bancárias
+            st.subheader("🏦 Taxas Bancárias")
+            st.write("Preencha os valores fixos para taxas a serem descontadas proporcionalmente:")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                taxa_usd = st.number_input(
+                    "Insira o valor fixo da taxa em USD:",
+                    min_value=0.0,
+                    value=26.00,
+                    step=0.01,
+                    format="%.2f",
+                    key="taxa_bancaria_usd"
+                )
+            with col2:
+                taxa_brl = st.number_input(
+                    "Insira o valor fixo da taxa em BRL:",
+                    min_value=0.0,
+                    value=0.49,
+                    step=0.01,
+                    format="%.2f",
+                    key="taxa_bancaria_brl"
+                )
+            
+            #st.divider()
+            
             # Botão para processar
             if st.button("Processar e Gerar Planilhas", type="primary"):
                 with st.spinner("Processando dados..."):
@@ -410,22 +521,26 @@ if uploaded_file is not None:
                         st.success(f"✓ Youtube Channels processado: {len(df_youtube_processado)} registros")
                     
                     if "Shares In & Out" in dfs:
-                        # Processa Share In (para concatenar)
-                        df_shares_in = processar_planilha(dfs["Shares In & Out"], mapeamento_shares_in_out, "Shares In & Out", nome_arquivo_completo)
-                        df_shares_in = calcular_net_brl(df_shares_in, taxas_cambio)
-                        dfs_processados.append(df_shares_in)
-                        st.success(f"✓ Shares In processado: {len(df_shares_in)} registros")
+                        # Processa Share In e Out juntos (para concatenar)
+                        df_shares = processar_planilha(dfs["Shares In & Out"], mapeamento_shares_in_out, "Shares In & Out", nome_arquivo_completo)
+                        df_shares = calcular_net_brl(df_shares, taxas_cambio)
+                        dfs_processados.append(df_shares)
+                        st.success(f"✓ Shares In & Out processado: {len(df_shares)} registros")
                         
-                        # Processa Share Out (separadamente)
+                        # Processa Share Out (separadamente para análise)
                         df_share_out = processar_shares_out(dfs["Shares In & Out"], taxas_cambio)
                         if not df_share_out.empty:
                             st.success(f"✓ Shares Out processado: {len(df_share_out)} registros para análise")
                     
-                    # Concatena Masters e Shares In
+                    # Concatena Masters e Shares In & Out
                     if dfs_processados:
-                        df_final = pd.concat(dfs_processados, ignore_index=True)
+                        df_final_sem_desconto = pd.concat(dfs_processados, ignore_index=True)
+                        
+                        # Aplica desconto nas taxas bancárias
+                        df_final = aplicar_desconto_proporcional(df_final_sem_desconto, taxa_usd, taxa_brl, taxas_cambio)
                         
                         # Armazena no session_state
+                        st.session_state['df_final_sem_desconto'] = df_final_sem_desconto
                         st.session_state['df_final'] = df_final
                         st.session_state['df_youtube_processado'] = df_youtube_processado
                         st.session_state['df_share_out'] = df_share_out
@@ -433,13 +548,14 @@ if uploaded_file is not None:
                         st.session_state['nome_arquivo_sem_extensao'] = nome_arquivo_sem_extensao
                         st.session_state['processamento_concluido'] = True
                         
-                        st.success(f"🎉 Processamento concluído! Total de registros Masters + Shares In: {len(df_final)}")
+                        st.success(f"🎉 Processamento concluído! Total de registros Masters + Shares In & Out: {len(df_final)}")
                         st.rerun()  # Atualiza a página para mostrar os resultados
     except Exception as e:
         st.error(f"Ocorreu um erro ao processar o arquivo: {e}")
 
 # Exibe resultados somente após processamento
 if 'df_final' in st.session_state and 'processamento_concluido' in st.session_state:
+    df_final_sem_desconto = st.session_state['df_final_sem_desconto']
     df_final = st.session_state['df_final']
     df_youtube_processado = st.session_state.get('df_youtube_processado', pd.DataFrame())
     df_share_out = st.session_state.get('df_share_out', pd.DataFrame())
@@ -448,30 +564,78 @@ if 'df_final' in st.session_state and 'processamento_concluido' in st.session_st
     
     st.divider()
     
-    # Resumo financeiro por origem
-    st.subheader("💲Resumo Financeiro por Origem")
-    resumo_origem = criar_resumo_financeiro_por_origem(df_final)
+    # Resumo por moeda (ANTES do desconto)
+    st.subheader("💱 Resumo por Moeda")
+    resumo_moeda = criar_resumo_por_moeda(df_final_sem_desconto)
+    
+    # Aplica styling para destacar a linha TOTAL
+    def highlight_total_moeda(row):
+        if row['Moeda'] == 'TOTAL':
+            return ['background-color: #f0f0f0; font-weight: bold'] * len(row)
+        return [''] * len(row)
+    
+    styled_moeda = resumo_moeda.style.apply(highlight_total_moeda, axis=1).format({
+        'Total (Moeda Original)': lambda x: f"{x:,.2f}" if pd.notna(x) else '-',
+        'Total (BRL)': lambda x: f"{x:,.2f}" if pd.notna(x) else x
+    })
+    st.dataframe(styled_moeda, use_container_width=True, hide_index=True)
+
+
+    st.divider()
+
+    # Resumo financeiro por origem ANTES do desconto
+    st.subheader("💲Resumo Financeiro por Origem (Antes do Desconto de Taxas)")
+    resumo_origem = criar_resumo_financeiro_por_origem(df_final_sem_desconto)
+    
     
     # Exibe métricas em colunas
-    col1, col2, col3 = st.columns(3)
+    cols = st.columns(len(resumo_origem) - 1)  # -1 para excluir o TOTAL
     for i, row in resumo_origem.iterrows():
         if row['Origem'] != 'TOTAL':
-            col = [col1, col2, col3][i % 3]
-            with col:
+            col_idx = i % len(cols)
+            with cols[col_idx]:
                 st.metric(
                     row['Origem'], 
                     f"R$ {row['Total Net BRL']:,.2f}"
                 )
 
+
     # Total geral
     total_brl = resumo_origem[resumo_origem['Origem'] == 'TOTAL']['Total Net BRL'].iloc[0]
-    st.metric("**💵 Total Masters + Share-In em BRL**", f"R$ {total_brl:,.2f}")
-         
+    st.metric("**💵 Total Masters + Share-In + Share-Out em BRL**", f"R$ {total_brl:,.2f}")
+
     # Adiciona resumo do Youtube Channels se existir
     if not df_youtube_processado.empty and 'Net' in df_youtube_processado.columns:
         total_youtube_brl = df_youtube_processado['Net'].sum()
         st.metric("📺 Youtube Channels Net BRL", f"R$ {total_youtube_brl:,.2f}")
     
+    st.divider()
+                
+    # Adiciona resumo do Youtube Channels se existir
+    if not df_youtube_processado.empty and 'Net' in df_youtube_processado.columns:
+        total_youtube_brl = df_youtube_processado['Net'].sum()
+        st.metric("📺 Youtube Channels Net BRL", f"R$ {total_youtube_brl:,.2f}")
+    
+      
+    # Resumo financeiro APÓS desconto das taxas bancárias
+    st.subheader("💲Resumo Financeiro por Origem (Após Desconto de Taxas)")
+    resumo_origem_com_desconto = criar_resumo_financeiro_por_origem(df_final)
+    
+    # Exibe métricas em colunas
+    cols_desconto = st.columns(len(resumo_origem_com_desconto) - 1)
+    for i, row in resumo_origem_com_desconto.iterrows():
+        if row['Origem'] != 'TOTAL':
+            col_idx = i % len(cols_desconto)
+            with cols_desconto[col_idx]:
+                st.metric(
+                    row['Origem'], 
+                    f"R$ {row['Total Net BRL']:,.2f}"
+                )
+
+    # Total geral com desconto
+    total_brl_com_desconto = resumo_origem_com_desconto[resumo_origem_com_desconto['Origem'] == 'TOTAL']['Total Net BRL'].iloc[0]
+    st.metric("**💵 Total Masters + Share-In + Share-Out em BRL (Após Desconto)**", f"R$ {total_brl_com_desconto:,.2f}")
+
     st.divider()
 
     # Análise de Share Out

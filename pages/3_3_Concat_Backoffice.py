@@ -36,7 +36,7 @@ if uploaded_files:
                 progress_bar.progress(progress)
                 
                 # Lê o arquivo e adiciona ao DataFrame
-                df = pd.read_excel(file)
+                df = pd.read_excel(file, header=5)
                 dataframes.append(df)
                             
             # Concatena todos os DataFrames
