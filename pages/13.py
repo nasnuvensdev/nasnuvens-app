@@ -21,7 +21,7 @@ if uploaded_file is not None:
         st.success("Arquivo carregado com sucesso")
         st.divider()
         
-        # Valores por planilha e moeda
+        # RESUMO 1: Soma por planilha e moeda
         st.subheader("Valores por planilha original")
         
         def show_summary_df(df, sheet_name):
@@ -31,7 +31,6 @@ if uploaded_file is not None:
             else:
                 if 'Currency' in df.columns:
                     summary = df.groupby('Currency')['Net'].sum().reset_index()
-                    summary['Net'] = summary['Net'].round(2)
                     summary.columns = ['Moeda', 'Valor']
                     st.dataframe(summary, hide_index=True, use_container_width=True)
                 else:
@@ -54,7 +53,6 @@ if uploaded_file is not None:
             else:
                 if 'Currency' in share_in.columns:
                     summary_in = share_in.groupby('Currency')['Net'].sum().reset_index()
-                    summary_in['Net'] = summary_in['Net'].round(2)
                     summary_in.columns = ['Moeda', 'Valor']
                     st.dataframe(summary_in, hide_index=True, use_container_width=True)
             
@@ -64,30 +62,8 @@ if uploaded_file is not None:
             else:
                 if 'Currency' in share_out.columns:
                     summary_out = share_out.groupby('Currency')['Net'].sum().reset_index()
-                    summary_out['Net'] = summary_out['Net'].round(2)
                     summary_out.columns = ['Moeda', 'Valor']
                     st.dataframe(summary_out, hide_index=True, use_container_width=True)
-        
-        # Resumo total por moeda de todas as planilhas originais
-        st.write("")
-        st.write("**Total Geral por Moeda:**")
-        
-        all_dfs = []
-        if not df_masters.empty and 'Net' in df_masters.columns:
-            all_dfs.append(df_masters[['Currency', 'Net']])
-        if not df_youtube.empty and 'Net' in df_youtube.columns:
-            all_dfs.append(df_youtube[['Currency', 'Net']])
-        if not df_shares.empty and 'Net' in df_shares.columns:
-            all_dfs.append(df_shares[['Currency', 'Net']])
-        
-        if all_dfs:
-            df_total_original = pd.concat(all_dfs, ignore_index=True)
-            summary_total = df_total_original.groupby('Currency')['Net'].sum().reset_index()
-            summary_total['Net'] = summary_total['Net'].round(2)
-            summary_total.columns = ['Moeda', 'Valor']
-            st.dataframe(summary_total, hide_index=True, use_container_width=True)
-        else:
-            st.write("*Sem rendimentos*")
         
         st.divider()
         
@@ -155,7 +131,7 @@ if uploaded_file is not None:
         st.success("Dados concatenados com sucesso")
         st.divider()
         
-        # Valores após concatenação
+        # RESUMO 2: Valores após concatenação
         st.subheader("Valores após concatenação")
         
         st.write("**Masters + Shares In & Out:**")
@@ -163,7 +139,6 @@ if uploaded_file is not None:
             st.write("*Sem rendimentos*")
         else:
             summary_masters = df_masters_concat.groupby('Currency')['Net'].sum().reset_index()
-            summary_masters['Net'] = summary_masters['Net'].round(2)
             summary_masters.columns = ['Moeda', 'Valor']
             st.dataframe(summary_masters, hide_index=True, use_container_width=True)
         
@@ -172,28 +147,8 @@ if uploaded_file is not None:
             st.write("*Sem rendimentos*")
         else:
             summary_youtube = df_youtube_concat.groupby('Currency')['Net'].sum().reset_index()
-            summary_youtube['Net'] = summary_youtube['Net'].round(2)
             summary_youtube.columns = ['Moeda', 'Valor']
             st.dataframe(summary_youtube, hide_index=True, use_container_width=True)
-        
-        # Resumo total por moeda após concatenação
-        st.write("")
-        st.write("**Total Geral por Moeda:**")
-        
-        all_concat_dfs = []
-        if not df_masters_concat.empty and 'Net' in df_masters_concat.columns:
-            all_concat_dfs.append(df_masters_concat[['Currency', 'Net']])
-        if not df_youtube_concat.empty and 'Net' in df_youtube_concat.columns:
-            all_concat_dfs.append(df_youtube_concat[['Currency', 'Net']])
-        
-        if all_concat_dfs:
-            df_total_concat = pd.concat(all_concat_dfs, ignore_index=True)
-            summary_total_concat = df_total_concat.groupby('Currency')['Net'].sum().reset_index()
-            summary_total_concat['Net'] = summary_total_concat['Net'].round(2)
-            summary_total_concat.columns = ['Moeda', 'Valor']
-            st.dataframe(summary_total_concat, hide_index=True, use_container_width=True)
-        else:
-            st.write("*Sem rendimentos*")
         
         st.divider()
         
@@ -208,50 +163,48 @@ if uploaded_file is not None:
         
         st.divider()
         
+        # Aplicar descontos proporcionais entre Masters e Youtube
+        def apply_proportional_discount(df_masters, df_youtube, currency, discount_amount):
+            if discount_amount == 0:
+                return df_masters, df_youtube
+            
+            # Calcular totais por dataframe
+            total_masters = df_masters[df_masters['Currency'] == currency]['Net'].sum()
+            total_youtube = df_youtube[df_youtube['Currency'] == currency]['Net'].sum()
+            total_combined = total_masters + total_youtube
+            
+            if total_combined == 0:
+                return df_masters, df_youtube
+            
+            # Calcular proporção de desconto para cada dataframe
+            discount_masters = discount_amount * (total_masters / total_combined)
+            discount_youtube = discount_amount * (total_youtube / total_combined)
+            
+            # Aplicar desconto proporcional
+            if total_masters > 0:
+                df_masters.loc[df_masters['Currency'] == currency, 'Net'] = \
+                    df_masters.loc[df_masters['Currency'] == currency, 'Net'] - \
+                    (df_masters.loc[df_masters['Currency'] == currency, 'Net'] / total_masters * discount_masters)
+            
+            if total_youtube > 0:
+                df_youtube.loc[df_youtube['Currency'] == currency, 'Net'] = \
+                    df_youtube.loc[df_youtube['Currency'] == currency, 'Net'] - \
+                    (df_youtube.loc[df_youtube['Currency'] == currency, 'Net'] / total_youtube * discount_youtube)
+            
+            return df_masters, df_youtube
+        
         # Criar cópias para aplicar os descontos
         df_masters_final = df_masters_concat.copy()
         df_youtube_final = df_youtube_concat.copy()
         
-        # Aplicar descontos considerando o total geral de ambos dataframes
+        # Aplicar descontos de forma proporcional
         if taxa_brl > 0:
-            # Calcular total BRL de ambos dataframes
-            total_brl_masters = df_masters_final[df_masters_final['Currency'] == 'BRL']['Net'].sum() if 'BRL' in df_masters_final['Currency'].values else 0
-            total_brl_youtube = df_youtube_final[df_youtube_final['Currency'] == 'BRL']['Net'].sum() if 'BRL' in df_youtube_final['Currency'].values else 0
-            total_brl_geral = total_brl_masters + total_brl_youtube
-            
-            if total_brl_geral > 0:
-                # Aplicar desconto proporcional em Masters
-                if total_brl_masters > 0:
-                    df_masters_final.loc[df_masters_final['Currency'] == 'BRL', 'Net'] = \
-                        df_masters_final.loc[df_masters_final['Currency'] == 'BRL', 'Net'] - \
-                        (df_masters_final.loc[df_masters_final['Currency'] == 'BRL', 'Net'] / total_brl_geral * taxa_brl)
-                
-                # Aplicar desconto proporcional em Youtube
-                if total_brl_youtube > 0:
-                    df_youtube_final.loc[df_youtube_final['Currency'] == 'BRL', 'Net'] = \
-                        df_youtube_final.loc[df_youtube_final['Currency'] == 'BRL', 'Net'] - \
-                        (df_youtube_final.loc[df_youtube_final['Currency'] == 'BRL', 'Net'] / total_brl_geral * taxa_brl)
+            df_masters_final, df_youtube_final = apply_proportional_discount(df_masters_final, df_youtube_final, 'BRL', taxa_brl)
         
         if taxa_usd > 0:
-            # Calcular total USD de ambos dataframes
-            total_usd_masters = df_masters_final[df_masters_final['Currency'] == 'USD']['Net'].sum() if 'USD' in df_masters_final['Currency'].values else 0
-            total_usd_youtube = df_youtube_final[df_youtube_final['Currency'] == 'USD']['Net'].sum() if 'USD' in df_youtube_final['Currency'].values else 0
-            total_usd_geral = total_usd_masters + total_usd_youtube
-            
-            if total_usd_geral > 0:
-                # Aplicar desconto proporcional em Masters
-                if total_usd_masters > 0:
-                    df_masters_final.loc[df_masters_final['Currency'] == 'USD', 'Net'] = \
-                        df_masters_final.loc[df_masters_final['Currency'] == 'USD', 'Net'] - \
-                        (df_masters_final.loc[df_masters_final['Currency'] == 'USD', 'Net'] / total_usd_geral * taxa_usd)
-                
-                # Aplicar desconto proporcional em Youtube
-                if total_usd_youtube > 0:
-                    df_youtube_final.loc[df_youtube_final['Currency'] == 'USD', 'Net'] = \
-                        df_youtube_final.loc[df_youtube_final['Currency'] == 'USD', 'Net'] - \
-                        (df_youtube_final.loc[df_youtube_final['Currency'] == 'USD', 'Net'] / total_usd_geral * taxa_usd)
+            df_masters_final, df_youtube_final = apply_proportional_discount(df_masters_final, df_youtube_final, 'USD', taxa_usd)
         
-        # Valores após descontos
+        # RESUMO 3: Valores após descontos
         st.subheader("Valores após descontos das taxas")
         
         st.write("**Masters + Shares In & Out:**")
@@ -259,7 +212,6 @@ if uploaded_file is not None:
             st.write("*Sem rendimentos*")
         else:
             summary_masters_final = df_masters_final.groupby('Currency')['Net'].sum().reset_index()
-            summary_masters_final['Net'] = summary_masters_final['Net'].round(2)
             summary_masters_final.columns = ['Moeda', 'Valor']
             st.dataframe(summary_masters_final, hide_index=True, use_container_width=True)
         
@@ -268,28 +220,8 @@ if uploaded_file is not None:
             st.write("*Sem rendimentos*")
         else:
             summary_youtube_final = df_youtube_final.groupby('Currency')['Net'].sum().reset_index()
-            summary_youtube_final['Net'] = summary_youtube_final['Net'].round(2)
             summary_youtube_final.columns = ['Moeda', 'Valor']
             st.dataframe(summary_youtube_final, hide_index=True, use_container_width=True)
-        
-        # Resumo total por moeda após descontos
-        st.write("")
-        st.write("**Total Geral por Moeda:**")
-        
-        all_final_dfs = []
-        if not df_masters_final.empty and 'Net' in df_masters_final.columns:
-            all_final_dfs.append(df_masters_final[['Currency', 'Net']])
-        if not df_youtube_final.empty and 'Net' in df_youtube_final.columns:
-            all_final_dfs.append(df_youtube_final[['Currency', 'Net']])
-        
-        if all_final_dfs:
-            df_total_final = pd.concat(all_final_dfs, ignore_index=True)
-            summary_total_final = df_total_final.groupby('Currency')['Net'].sum().reset_index()
-            summary_total_final['Net'] = summary_total_final['Net'].round(2)
-            summary_total_final.columns = ['Moeda', 'Valor']
-            st.dataframe(summary_total_final, hide_index=True, use_container_width=True)
-        else:
-            st.write("*Sem rendimentos*")
         
         st.divider()
         
@@ -336,6 +268,43 @@ if uploaded_file is not None:
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         use_container_width=True
                     )
+        
+        st.divider()
+        
+        # RESUMO 4: Valores finais com totais
+        st.subheader("Valores finais por moeda e dataframe")
+        
+        st.write("**Masters + Shares In & Out:**")
+        if df_masters_final.empty or df_masters_final['Net'].sum() == 0:
+            st.write("*Sem rendimentos*")
+        else:
+            summary_masters_final = df_masters_final.groupby('Currency')['Net'].sum().reset_index()
+            summary_masters_final.columns = ['Moeda', 'Valor']
+            st.dataframe(summary_masters_final, hide_index=True, use_container_width=True)
+        
+        st.write("**Youtube Channels:**")
+        if df_youtube_final.empty or df_youtube_final['Net'].sum() == 0:
+            st.write("*Sem rendimentos*")
+        else:
+            summary_youtube_final = df_youtube_final.groupby('Currency')['Net'].sum().reset_index()
+            summary_youtube_final.columns = ['Moeda', 'Valor']
+            st.dataframe(summary_youtube_final, hide_index=True, use_container_width=True)
+        
+        # TOTAL GERAL: Masters + Youtube por moeda
+        st.write("**TOTAL GERAL (Masters + Shares In & Out + Youtube Channels):**")
+        
+        # Obter todas as moedas únicas
+        all_currencies = set(df_masters_final['Currency'].unique()) | set(df_youtube_final['Currency'].unique())
+        
+        total_data = []
+        for currency in sorted(all_currencies):
+            total_masters_currency = df_masters_final[df_masters_final['Currency'] == currency]['Net'].sum()
+            total_youtube_currency = df_youtube_final[df_youtube_final['Currency'] == currency]['Net'].sum()
+            total_currency = total_masters_currency + total_youtube_currency
+            total_data.append({'Moeda': currency, 'Valor': total_currency})
+        
+        summary_total = pd.DataFrame(total_data)
+        st.dataframe(summary_total, hide_index=True, use_container_width=True)
         
     except Exception as e:
         st.error(f"Erro ao processar o arquivo: {str(e)}")
