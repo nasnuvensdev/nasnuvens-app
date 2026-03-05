@@ -15,10 +15,10 @@ st.title("🎵 Cruzamento de Relatórios com Base de Catálogo")
 # ---------------------------
 # Caminhos Fixos
 # ---------------------------
-CAMINHO_BASE_ABRAMUS = r"Z:\ROYALTY\_ANALYTICS_\Python Codes\RR - Processador Catalogos\Robo_Abramus_Base.xlsx"
+CAMINHO_BASE_ABRAMUS = r"Z:\ROYALTY\_ANALYTICS_\Python Codes\Nas Nuvens App\nasnuvens-app\data\mapping\Robo_Abramus_Base.xlsx"
 CAMINHO_ABRAMUS = r"Z:\ROYALTY\Royalties Statements_Historicals\Nas Nuvens Catalog\ABRAMUS"
 
-CAMINHO_BASE_SONY = r"C:\Users\marcelo.souza\OneDrive - NASNUVENS\Today\Robo Cruzamento ABRAMUS x ECAD\Mapping_Sony.xlsx"
+CAMINHO_BASE_SONY = r"Z:\ROYALTY\_ANALYTICS_\Python Codes\Nas Nuvens App\nasnuvens-app\data\mapping\Mapping_Sony.xlsx"
 CAMINHO_SONY = r"Z:\ROYALTY\Royalties Statements_Historicals\Nas Nuvens Catalog\SONY MUSIC PUBLISHING"
 
 # ---------------------------

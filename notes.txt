@@ -9,3 +9,5 @@ pip freeze > requirements.txt
 
 # Cria .exe
 pyinstaller --onefile Home.py
+
+python -m streamlit run Home.py
